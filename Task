@@ -1,0 +1,25 @@
+Sistema de Votação para Assembleia Virtual
+ Planejamento e Arquitetura
+ Criar documento de plano de implementação
+ Obter aprovação do usuário
+Configuração do Projeto
+ Inicializar projeto Next.js
+Configurar design system (Vanilla CSS) e estrutura base
+ Configurar banco de dados SQLite + Prisma com schema seguro (Imutabilidade)
+ Implementação Core
+Sistema de Autenticação Customizado
+ Login passo 1: Validação CPF + Data de Nascimento
+ Login passo 2: Sistema de Token 2FA (Mockável para Email/WhatsApp)
+ Painel Administrativo
+ Gerenciamento de Pautas (Título, Descrição)
+ Controle de Estados (Aguardando, Aberta, Encerrada)
+ Interface do Eleitor
+ Fluxo de confirmação de presença
+ Votação por item (Aprovo, Reprovo, Abstenho)
+ Garantia de Imutabilidade (Voto único, sem edição)
+ Dashboard de Resultados (Visualização para telão)
+ Polimento e UI/UX
+ Aplicar design premium e animações
+ Verificação e Entrega
+ Testes de fluxo do usuário
+ Criar guia de passo-a-passo (walkthrough)

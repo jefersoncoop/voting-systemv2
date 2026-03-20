@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  cpf       String   @unique
+  birthDate DateTime
+  name      String
+  isAdmin   Boolean  @default(false)
+  phone     String?
+  hasRestrictions Boolean @default(false) // Members impeded from voting on specific items (e.g. Directors)
+  createdAt DateTime @default(now())
+  
+  votes     Vote[]
+}
+
+model Assembly {
+  id          String   @id @default(uuid())
+  title       String   // Ex: "AGO 2026", "Assembleia Extraordinária 2026"
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  status      String   @default("PENDING") // PENDING, OPEN, CLOSED
+  createdAt   DateTime @default(now())
+  
+  items       AgendaItem[]
+}
+
+model AgendaItem {
+  id          String   @id @default(uuid())
+  title       String   // Ex: "Aprovação do Orçamento", "Eleição da Diretoria"
+  description String?
+  order       Int      @default(0) // Ordem de apresentação
+  excludesRestricted Boolean @default(false) // If true, users with hasRestrictions cannot vote
+  
+  assemblyId  String
+  assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  
+  votes       Vote[]
+  createdAt   DateTime @default(now())
+}
+
+model Vote {
+  id            String   @id @default(uuid())
+  choice        String   // APPROVE, REJECT, ABSTAIN
+  timestamp     DateTime @default(now())
+  ipAddress     String?  // Audit purpose
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  
+  agendaItemId  String
+  agendaItem    AgendaItem @relation(fields: [agendaItemId], references: [id], onDelete: Cascade)
+
+  // Constraint ensures one vote per user per agenda item
+  @@unique([userId, agendaItemId])
+}

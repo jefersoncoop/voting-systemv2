@@ -1,0 +1,61 @@
+Plano de Implementação: Sistema de Votação Corporativa em Tempo Real
+Objetivo
+Desenvolver uma aplicação web segura, responsiva e com design premium para gerenciar votações em assembleias virtuais de colaboradores. O sistema deve permitir que um administrador abra pautas para votação e que os colaboradores votem em tempo real, com os resultados sendo exibidos instantaneamente.
+
+Revisão do Usuário Necessária
+IMPORTANT
+
+Stack Tecnológica: Proponho utilizar Next.js (React) para o frontend e backend (API Routes). Persistência de Dados: Para simplificar o deploy e manter a portabilidade neste ambiente, usaremos SQLite com Prisma ORM. Isso evita a necessidade de configurar bancos de dados externos complexos agora. Estilização: Usarei Vanilla CSS moderno (CSS Variables, Flexbox/Grid) para garantir um design customizado e de alta performance, sem dependências pesadas, focado em uma estética "Premium Corporate" (Dark Mode, Glassmorphism).
+
+Mudanças Propostas
+Arquitetura
+Framework: Next.js 14+ (App Router).
+Database: SQLite (arquivo local).
+ORM: Prisma.
+Real-time: Polling inteligente ou Server-Sent Events (SSE) para atualização dos votos no dashboard.
+Componentes Principais
+1. Autenticação em Duas Etapas (Alta Adesão)
+Passo 1 (Identificação): Formulário simples pedindo CPF e Data de Nascimento. Validação contra base de dados pré-carregada de colaboradores.
+Passo 2 (Verificação/2FA):
+O sistema gera um token numérico de 6 dígitos.
+Simulação de Envio: Para este desenvolvimento, o token será exibido no log do servidor (mock), mas a arquitetura terá "Providers" prontos para conectar APIs de E-mail (ex: Resend/SendGrid) e WhatsApp (ex: Twilio/WPPConnect).
+O usuário insere o token para liberar o acesso à assembleia.
+2. Painel Administrativo (/admin)
+Criar/Editar Pautas.
+Controle de Estado da Votação: Aguardando, Em Votação, Encerrada.
+Monitoramento de quórum (usuários logados).
+3. Interface do Eleitor (/votar)
+Interface limpa e direta ("botões grandes").
+Para cada pauta ativa, opções claras:
+✅ Aprovo
+❌ Reprovo
+⚪ Abstenho
+Imutabilidade e Segurança:
+O sistema impedirá tecnicamente a alteração do voto após confirmação.
+Cada voto será registrado com timestamp (carimbo de tempo) e IP de origem para fins de auditoria.
+O banco de dados será configurado para registrar o voto apenas uma vez por CPF por Pauta (Constraint Unique).
+4. Dashboard de Assembleia (/plenario)
+Visualização "Big Screen" para transmissão.
+Exibição de quórum atual.
+Gráficos de resultado atualizados em tempo real assim que a votação é encerrada (ou parciais, configurável).
+Auditoria e Logs
+IMPORTANT
+
+Para garantir a conformidade com a auditoria, o sistema implementará:
+
+Logs de Votação: Registro imutável de quem votou, quando e de onde (IP), sem expor a escolha no painel público (sigilo conforme regra de negócio, ou aberto se for votação nominal - Configuraremos como voto secreto por padrão, mas auditável no banco).
+Integridade: Constraints de banco de dados para impedir modificação de registros de voto (UPDATE desabilitado logicamente).
+Estrutura de Arquivos Sugerida
+[NEW] Estrutura Inicial
+/app: Rotas da aplicação (admin, votar, plenario, api).
+/components: Componentes UI reutilizáveis (Button, Card, Modal, Charts).
+/lib: Configuração do Prisma, utilitários de sessão.
+/styles: Variáveis CSS globais, tokens de design premium.
+prisma/schema.prisma: Definição das tabelas (User, AgendaItem, Vote).
+Plano de Verificação
+Testes Automatizados
+Scripts para simular múltiplos usuários votando simultaneamente.
+Verificação Manual
+Fluxo do Admin: Criar uma pauta, abrir votação, encerrar votação.
+Fluxo do Eleitor: Logar, votar em uma pauta aberta, tentar votar em pauta fechada.
+Fluxo do Observador: Verificar se o Dashboard atualiza os votos sem recarregar a página.
