@@ -35,8 +35,22 @@ export default function LoginPage() {
                 return
             }
 
-            setChallenge(data.challenge)
-            setStep(2)
+            if (data.skip2FA) {
+                setUserInfo({
+                    name: data.user.name,
+                    hasRestrictions: data.user.hasRestrictions
+                })
+                setTimeout(() => {
+                    if (data.user.isAdmin) {
+                        router.push('/admin')
+                    } else {
+                        router.push('/votar')
+                    }
+                }, 2000)
+            } else {
+                setChallenge(data.challenge)
+                setStep(2)
+            }
         } catch (err) {
             setError('Erro de conexão')
         } finally {

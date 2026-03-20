@@ -33,6 +33,41 @@ export async function POST(request: NextRequest) {
        return NextResponse.json({ error: 'Dados não conferem' }, { status: 401 })
     }
 
+    // Check if 2FA is required
+    let require2FA = true
+    const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } })
+    if (settings) require2FA = settings.require2FA
+
+    if (!require2FA) {
+        // Skip 2FA sequence, create real session Token
+        const { encrypt } = await import('@/lib/auth')
+        const sessionToken = await encrypt({
+            userId: user.id,
+            isAdmin: user.isAdmin,
+            name: user.name,
+            hasRestrictions: user.hasRestrictions
+        })
+
+        const { cookies } = await import('next/headers')
+        const cookieStore = await cookies()
+        cookieStore.set('session', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 4 // 4 hours
+        })
+
+        return NextResponse.json({
+            success: true,
+            skip2FA: true,
+            user: {
+                name: user.name,
+                isAdmin: user.isAdmin,
+                hasRestrictions: user.hasRestrictions
+            }
+        })
+    }
+
     // Success Step 1
     // Generate a numeric 2FA token (Mocked for now)
     const token = Math.floor(100000 + Math.random() * 900000).toString()

@@ -27,7 +27,10 @@ interface Assembly {
 
 export default function AdminPage() {
     const router = useRouter()
-    const [activeTab, setActiveTab] = useState<'assemblies' | 'voters'>('assemblies')
+    const [activeTab, setActiveTab] = useState<'assemblies' | 'voters' | 'settings'>('assemblies')
+
+    // Settings State
+    const [require2FA, setRequire2FA] = useState(true)
 
     // Assemblies State
     const [assemblies, setAssemblies] = useState<Assembly[]>([])
@@ -54,8 +57,43 @@ export default function AdminPage() {
 
     useEffect(() => {
         if (activeTab === 'assemblies') loadAssemblies()
-        else loadVoters()
+        else if (activeTab === 'voters') loadVoters()
+        else loadSettings()
     }, [activeTab])
+
+    const loadSettings = async () => {
+        setLoading(true)
+        try {
+            const res = await fetch('/api/settings')
+            if (res.status === 401) return router.push('/login')
+            if (res.ok) {
+                const data = await res.json()
+                if (data.settings) setRequire2FA(data.settings.require2FA)
+            }
+        } catch (err) {
+            setError('Erro ao carregar configurações')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const saveSettings = async () => {
+        setLoading(true)
+        setError('')
+        try {
+            const res = await fetch('/api/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ require2FA })
+            })
+            if (!res.ok) throw new Error('Erro ao salvar configurações')
+            alert('Configurações salvas com sucesso!')
+        } catch (err: any) {
+            setError(err.message || 'Erro ao salvar config')
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const loadAssemblies = async () => {
         setLoading(true)
@@ -231,12 +269,18 @@ export default function AdminPage() {
                     >
                         👥 Eleitores
                     </button>
+                    <button
+                        className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('settings')}
+                    >
+                        ⚙️ Configurações
+                    </button>
                 </div>
             </div>
 
             {error && <div className="error-message">{error}</div>}
 
-            {activeTab === 'assemblies' ? (
+            {activeTab === 'assemblies' && (
                 <div className="assemblies-section">
                     <button className="btn btn-primary mb-4" onClick={() => setShowAssemblyModal(true)}>
                         + Nova Assembleia
@@ -271,7 +315,9 @@ export default function AdminPage() {
                         ))}
                     </div>
                 </div>
-            ) : (
+            )}
+            
+            {activeTab === 'voters' && (
                 <div className="voters-section">
                     <div className="voters-header-actions mb-4" style={{ display: 'flex', gap: '1rem' }}>
                         <button className="btn btn-primary" onClick={() => setShowVoterModal(true)}>
@@ -318,6 +364,40 @@ export default function AdminPage() {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'settings' && (
+                <div className="settings-section">
+                    <div className="item-card" style={{ maxWidth: '600px' }}>
+                        <div className="item-header">
+                            <h3>Autenticação em Duas Etapas (2FA)</h3>
+                        </div>
+                        <p className="item-description" style={{ marginBottom: '1.5rem' }}>
+                            Se desabilitado, os eleitores e administradores poderão acessar o sistema
+                            fornecendo apenas CPF e Data de Nascimento, pulando a digitação do Token de 6 dígitos.
+                        </p>
+                        
+                        <div className="form-group checkbox-group" style={{ marginBottom: '2rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', fontSize: '1.1rem' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={require2FA}
+                                    onChange={e => setRequire2FA(e.target.checked)}
+                                    style={{ width: '20px', height: '20px' }}
+                                />
+                                <strong>Exigir Código de Segurança (2FA) no Login</strong>
+                            </label>
+                        </div>
+
+                        <button 
+                            className="btn btn-primary" 
+                            onClick={saveSettings}
+                            disabled={loading}
+                        >
+                            {loading ? 'Salvando...' : 'Salvar Configurações'}
+                        </button>
                     </div>
                 </div>
             )}
