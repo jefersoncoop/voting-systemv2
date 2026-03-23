@@ -27,10 +27,16 @@ export async function GET(
             hasRestrictions = user?.hasRestrictions || false
         }
 
+        let itemWhereClause: any = {}
+        if (hasRestrictions) {
+            itemWhereClause.excludesRestricted = false
+        }
+
         const assembly = await prisma.assembly.findUnique({
             where: { id },
             include: {
                 items: {
+                    where: itemWhereClause,
                     orderBy: { order: 'asc' },
                     include: {
                         _count: {
