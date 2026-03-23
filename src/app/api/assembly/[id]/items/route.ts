@@ -15,7 +15,7 @@ export async function POST(
         if (!payload || !payload.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
         const body = await request.json()
-        const { title, description } = body
+        const { title, description, excludesRestricted } = body
 
         if (!title) {
             return NextResponse.json({ error: 'Título obrigatório' }, { status: 400 })
@@ -31,7 +31,8 @@ export async function POST(
                 title,
                 description,
                 order: count + 1,
-                assemblyId: id
+                assemblyId: id,
+                excludesRestricted: !!excludesRestricted
             }
         })
 

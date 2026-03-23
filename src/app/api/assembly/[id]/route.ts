@@ -27,20 +27,10 @@ export async function GET(
             hasRestrictions = user?.hasRestrictions || false
         }
 
-        let itemWhereClause: any = {}
-        if (hasRestrictions) {
-            // Usuários com restrições só veem itens onde excludesRestricted = false
-            // Isso significa que itens com excludesRestricted = true NÃO serão retornados
-            // No SQLite, booleanos são armazenados como 0/1, então usamos false explicitamente
-            itemWhereClause.excludesRestricted = false
-        }
-        // Se não tem restrições, não aplica filtro (vê todos os itens)
-
         const assembly = await prisma.assembly.findUnique({
             where: { id },
             include: {
                 items: {
-                    where: itemWhereClause,
                     orderBy: { order: 'asc' },
                     include: {
                         _count: {
