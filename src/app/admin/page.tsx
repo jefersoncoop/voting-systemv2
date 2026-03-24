@@ -44,6 +44,10 @@ export default function AdminPage() {
     // Voters State
     const [voters, setVoters] = useState<User[]>([])
     const [newVoter, setNewVoter] = useState({ name: '', cpf: '', birthDate: '', hasRestrictions: false })
+    const [searchQuery, setSearchQuery] = useState('')
+    const [showEditVoterModal, setShowEditVoterModal] = useState(false)
+    const [editingVoter, setEditingVoter] = useState<User | null>(null)
+    const [editFormData, setEditFormData] = useState({ name: '', cpf: '', birthDate: '', hasRestrictions: false })
 
     const [loading, setLoading] = useState(true)
     const [showAssemblyModal, setShowAssemblyModal] = useState(false)
@@ -249,6 +253,49 @@ export default function AdminPage() {
         }
     }
 
+    const openEditVoter = (voter: User) => {
+        setEditingVoter(voter)
+        setEditFormData({
+            name: voter.name,
+            cpf: voter.cpf,
+            birthDate: new Date(voter.birthDate).toISOString().split('T')[0],
+            hasRestrictions: voter.hasRestrictions
+        })
+        setShowEditVoterModal(true)
+    }
+
+    const saveEditVoter = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editingVoter) return
+        setError('')
+        setLoading(true)
+
+        try {
+            const res = await fetch(`/api/users/${editingVoter.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editFormData)
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Erro ao editar eleitor')
+
+            setShowEditVoterModal(false)
+            setEditingVoter(null)
+            loadVoters()
+        } catch (err: any) {
+            setError(err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const filteredVoters = voters.filter(v => {
+        const query = searchQuery.toLowerCase()
+        const cleanCpfQuery = query.replace(/\D/g, '')
+        return v.name.toLowerCase().includes(query) || v.cpf.includes(query) || (cleanCpfQuery.length > 0 && v.cpf.replace(/\D/g, '').includes(cleanCpfQuery))
+    })
+
     return (
         <div className="admin-container">
             <div className="admin-header">
@@ -319,13 +366,29 @@ export default function AdminPage() {
             
             {activeTab === 'voters' && (
                 <div className="voters-section">
-                    <div className="voters-header-actions mb-4" style={{ display: 'flex', gap: '1rem' }}>
-                        <button className="btn btn-primary" onClick={() => setShowVoterModal(true)}>
-                            + Novo Eleitor
-                        </button>
-                        <button className="btn btn-outline" onClick={() => setShowImportModal(true)}>
-                            📥 Importar Lista (CSV)
-                        </button>
+                    <div className="voters-header-actions mb-4" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button className="btn btn-primary" onClick={() => setShowVoterModal(true)}>
+                                + Novo Eleitor
+                            </button>
+                            <button className="btn btn-outline" onClick={() => setShowImportModal(true)}>
+                                📥 Importar Lista (CSV)
+                            </button>
+                            <button className="btn btn-outline" onClick={() => window.open('/admin/relatorios/eleitores', '_blank')}>
+                                🖨️ Imprimir Lista (PDF)
+                            </button>
+                        </div>
+                        <div style={{ minWidth: '250px', flexGrow: 1, maxWidth: '400px' }}>
+                            <input
+                                type="text"
+                                placeholder="Buscar por Nome ou CPF..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                style={{
+                                    width: '100%', padding: '0.6rem 1rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)'
+                                }}
+                            />
+                        </div>
                     </div>
 
                     <div className="table-responsive">
@@ -340,7 +403,7 @@ export default function AdminPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {voters.map(voter => (
+                                {filteredVoters.map(voter => (
                                     <tr key={voter.id}>
                                         <td>{voter.name}</td>
                                         <td>{voter.cpf}</td>
@@ -354,7 +417,16 @@ export default function AdminPage() {
                                         </td>
                                         <td>
                                             <button
+                                                className="btn-icon"
+                                                title="Editar Eleitor"
+                                                onClick={() => openEditVoter(voter)}
+                                                style={{ marginRight: '0.5rem' }}
+                                            >
+                                                ✏️
+                                            </button>
+                                            <button
                                                 className="btn-icon danger"
+                                                title="Excluir Eleitor"
                                                 onClick={() => deleteVoter(voter.id)}
                                             >
                                                 🗑️
@@ -496,7 +568,58 @@ export default function AdminPage() {
                             </div>
                             <div className="modal-actions">
                                 <button type="button" className="btn btn-outline" onClick={() => setShowVoterModal(false)}>Cancelar</button>
-                                <button type="submit" className="btn btn-primary">Salvar</button>
+                                <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Salvando...' : 'Salvar'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Voter Modal */}
+            {showEditVoterModal && editingVoter && (
+                <div className="modal-overlay" onClick={() => setShowEditVoterModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <h2>Editar Eleitor</h2>
+                        <form onSubmit={saveEditVoter}>
+                            <div className="form-group">
+                                <label>Nome Completo</label>
+                                <input
+                                    value={editFormData.name}
+                                    onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>CPF</label>
+                                <input
+                                    value={editFormData.cpf}
+                                    onChange={e => setEditFormData({ ...editFormData, cpf: e.target.value })}
+                                    placeholder="000.000.000-00"
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Senha (Data de Nascimento)</label>
+                                <input
+                                    type="date"
+                                    value={editFormData.birthDate}
+                                    onChange={e => setEditFormData({ ...editFormData, birthDate: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <div className="form-group checkbox-group" style={{ marginTop: '1rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={editFormData.hasRestrictions}
+                                        onChange={e => setEditFormData({ ...editFormData, hasRestrictions: e.target.checked })}
+                                    />
+                                    Membro da Diretoria (Voto Restrito)
+                                </label>
+                            </div>
+                            <div className="modal-actions">
+                                <button type="button" className="btn btn-outline" onClick={() => setShowEditVoterModal(false)}>Cancelar</button>
+                                <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Salvando...' : 'Salvar Alterações'}</button>
                             </div>
                         </form>
                     </div>
