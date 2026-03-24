@@ -1,17 +1,17 @@
 :root {
   /* Premium Corporate Palette */
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #0c2856;
+  --foreground: #ffffff;
   
-  --primary: #3b82f6; /* Blue 500 */
-  --primary-hover: #2563eb;
-  --primary-glow: rgba(59, 130, 246, 0.5);
+  --primary: #3ab54a;
+  --primary-hover: #2e9b3d;
+  --primary-glow: rgba(58, 181, 74, 0.5);
   
-  --surface: #171717;
-  --surface-hover: #262626;
-  --border: #404040;
+  --surface: #091e42;
+  --surface-hover: #0e2a5c;
+  --border: #163c7d;
   
-  --success: #10b981;
+  --success: #3ab54a;
   --error: #ef4444;
   --warning: #f59e0b;
 

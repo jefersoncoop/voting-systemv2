@@ -189,9 +189,6 @@ export default function VotingSessionPage() {
                             color: '#9ca3af'
                         }}>
                             <span style={{ fontWeight: '600', color: '#fff' }}>{userInfo.name}</span>
-                            <span style={{ fontSize: '0.75rem' }}>
-                                {userInfo.hasRestrictions ? 'Diretoria' : 'Membro'}
-                            </span>
                         </div>
                     )}
                 </div>

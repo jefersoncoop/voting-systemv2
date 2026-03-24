@@ -200,13 +200,8 @@ export default function LoginPage() {
                         }}>
                             <h2 style={{ color: '#10b981', marginBottom: '1rem' }}>✅ Login Realizado com Sucesso!</h2>
                             <div style={{ marginBottom: '1rem' }}>
-                                <p style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                                <p style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '0.5rem' }}>
                                     {userInfo.name}
-                                </p>
-                                <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
-                                    Tipo de Acesso: <strong style={{ color: userInfo.hasRestrictions ? '#ef4444' : '#10b981' }}>
-                                        {userInfo.hasRestrictions ? 'Diretoria' : 'Membro'}
-                                    </strong>
                                 </p>
                             </div>
                             <p style={{ color: '#9ca3af', fontSize: '0.85rem' }}>
