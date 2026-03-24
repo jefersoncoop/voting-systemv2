@@ -198,7 +198,7 @@ export default function VotarPage() {
                                                 <span>📋 {assembly._count.items} pautas</span>
                                             </div>
                                             <Link href={`/votar/${assembly.id}`} className="enter-btn">
-                                                Entrar na Sala ➜
+                                                Iniciar Votação ➜
                                             </Link>
                                         </>
                                     )}

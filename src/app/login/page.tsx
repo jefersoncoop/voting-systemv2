@@ -24,7 +24,10 @@ export default function LoginPage() {
             const res = await fetch('/api/auth/login/step1', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cpf, birthDate })
+                body: JSON.stringify({ 
+                    cpf, 
+                    birthDate: birthDate.includes('/') ? birthDate.split('/').reverse().join('-') : birthDate 
+                })
             })
 
             const data = await res.json()
@@ -105,6 +108,14 @@ export default function LoginPage() {
         return numbers.slice(0, 11)
     }
 
+    const formatDateInput = (value: string) => {
+        let nums = value.replace(/\D/g, '')
+        if (nums.length > 8) nums = nums.slice(0, 8)
+        if (nums.length > 4) return `${nums.slice(0, 2)}/${nums.slice(2, 4)}/${nums.slice(4)}`
+        if (nums.length > 2) return `${nums.slice(0, 2)}/${nums.slice(2)}`
+        return nums
+    }
+
     return (
         <div className="login-container">
             <div className="login-card animate-fade-in">
@@ -134,9 +145,11 @@ export default function LoginPage() {
                             <label htmlFor="birthDate">Data de Nascimento</label>
                             <input
                                 id="birthDate"
-                                type="date"
+                                type="text"
+                                placeholder="DD/MM/AAAA"
                                 value={birthDate}
-                                onChange={(e) => setBirthDate(e.target.value)}
+                                onChange={(e) => setBirthDate(formatDateInput(e.target.value))}
+                                maxLength={10}
                                 required
                                 disabled={loading}
                             />

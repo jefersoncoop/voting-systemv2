@@ -1,7 +1,7 @@
 .admin-container {
     min-height: 100vh;
     padding: 2rem;
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+    background: var(--background);
 }
 
 .admin-header {
