@@ -11,6 +11,7 @@ interface AgendaItem {
     description: string | null
     order: number
     excludesRestricted?: boolean
+    votes?: { choice: string }[]
 }
 
 interface Assembly {
@@ -97,9 +98,20 @@ export default function VotingSessionPage() {
                 setProtocol(data.protocol)
             }
 
-            // Check if we already have votes (this would ideally come from the API)
-            // But for now, if we loaded "receipt=true" or if local user tries to vote, it will be handled.
-            // A better way is to fetch user votes here if needed, but the list page already handles the "Concluded" state entry point.
+            if (data.assembly?.items) {
+                const votedIds = data.assembly.items
+                    .filter((item: any) => item.votes && item.votes.length > 0)
+                    .map((item: any) => item.id)
+                setSubmittedVotes(votedIds)
+
+                const choices: { [key: string]: string } = {}
+                data.assembly.items.forEach((item: any) => {
+                    if (item.votes && item.votes.length > 0) {
+                        choices[item.id] = item.votes[0].choice
+                    }
+                })
+                setCurrentVote(choices)
+            }
         } catch (err) {
             setError('Erro ao carregar dados')
         } finally {
