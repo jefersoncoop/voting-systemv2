@@ -29,7 +29,7 @@
 }
 
 .loading-screen p {
-    color: #9ca3af;
+    color: #64748b;
     font-size: 1.125rem;
 }
 
@@ -41,7 +41,7 @@
 .plenario-header h1 {
     font-size: 3rem;
     font-weight: 700;
-    background: linear-gradient(135deg, var(--primary) 0%, #60a5fa 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #818cf8 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -51,7 +51,7 @@
 .quorum-badge {
     display: inline-block;
     padding: 0.75rem 1.5rem;
-    background: rgba(59, 130, 246, 0.1);
+    background: #f1f5f9;
     border: 2px solid var(--primary);
     border-radius: var(--radius-full);
     font-size: 1.25rem;
@@ -81,7 +81,7 @@
 
 .empty-dashboard h2 {
     font-size: 2rem;
-    color: #9ca3af;
+    color: #64748b;
 }
 
 .results-grid {
@@ -135,13 +135,13 @@
 }
 
 .status-indicator.closed {
-    background: rgba(107, 114, 128, 0.1);
-    color: #9ca3af;
-    border: 2px solid #6b7280;
+    background: rgba(100, 116, 139, 0.1);
+    color: #64748b;
+    border: 2px solid #94a3b8;
 }
 
 .result-description {
-    color: #d1d5db;
+    color: #475569;
     font-size: 1.125rem;
     line-height: 1.6;
     margin-bottom: 2rem;
@@ -162,7 +162,7 @@
 }
 
 .stat-label {
-    color: #9ca3af;
+    color: #64748b;
     font-size: 0.875rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -212,7 +212,7 @@
 .vote-count {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #d1d5db;
+    color: var(--foreground);
 }
 
 .vote-bar-track {

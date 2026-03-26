@@ -14,18 +14,12 @@ export async function GET(
         const payload = await decrypt(session)
         if (!payload) return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 })
 
-        // Se a sessão não tem hasRestrictions, buscar do banco de dados
-        let hasRestrictions = false
-        if (payload.hasRestrictions !== undefined) {
-            hasRestrictions = payload.hasRestrictions === true || payload.hasRestrictions === 'true'
-        } else {
-            // Fallback: buscar do banco se não estiver na sessão
-            const user = await prisma.user.findUnique({
-                where: { id: payload.userId },
-                select: { hasRestrictions: true }
-            })
-            hasRestrictions = user?.hasRestrictions || false
-        }
+        // Buscar informações de restrição do usuário diretamente do banco para garantir dados atualizados
+        const user = await prisma.user.findUnique({
+            where: { id: payload.userId },
+            select: { hasRestrictions: true }
+        })
+        const hasRestrictions = user?.hasRestrictions || false
 
         let itemWhereClause: any = {}
         if (hasRestrictions) {
@@ -48,8 +42,19 @@ export async function GET(
         })
 
         if (!assembly) return NextResponse.json({ error: 'Assembleia não encontrada' }, { status: 404 })
+        
+        // Buscar se o usuário já tem algum voto nesta assembleia para recuperar o protocolo
+        const firstVote = await prisma.vote.findFirst({
+            where: {
+                userId: payload.userId,
+                agendaItem: {
+                    assemblyId: id
+                }
+            },
+            select: { protocol: true }
+        })
 
-        return NextResponse.json({ assembly })
+        return NextResponse.json({ assembly, protocol: firstVote?.protocol || null })
     } catch (error) {
         return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
     }

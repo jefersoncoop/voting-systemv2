@@ -10,8 +10,12 @@ export async function GET(request: NextRequest) {
         const payload = await decrypt(session)
         if (!payload) return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 })
 
-        // Garantir que hasRestrictions seja tratado como boolean
-        const hasRestrictions = payload.hasRestrictions === true || payload.hasRestrictions === 'true'
+        // Garantir que hasRestrictions seja buscado do banco de dados para evitar dados obsoletos na sessão
+        const user = await prisma.user.findUnique({
+            where: { id: payload.userId },
+            select: { hasRestrictions: true }
+        })
+        const hasRestrictions = user?.hasRestrictions || false
 
         // Allow read access for all authenticated users (voters and admins)
 

@@ -16,7 +16,7 @@
 .admin-header h1 {
     font-size: 2rem;
     font-weight: 700;
-    background: linear-gradient(135deg, var(--primary) 0%, #60a5fa 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #818cf8 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -24,14 +24,14 @@
 }
 
 .admin-header p {
-    color: #9ca3af;
+    color: #64748b;
     font-size: 0.95rem;
 }
 
 .loading {
     text-align: center;
     padding: 4rem;
-    color: #9ca3af;
+    color: #64748b;
     font-size: 1.125rem;
 }
 
@@ -91,13 +91,13 @@
 }
 
 .status-closed {
-    background: rgba(107, 114, 128, 0.1);
-    color: #9ca3af;
-    border: 1px solid #6b7280;
+    background: rgba(100, 116, 139, 0.1);
+    color: #64748b;
+    border: 1px solid #94a3b8;
 }
 
 .item-description {
-    color: #d1d5db;
+    color: #475569;
     font-size: 0.875rem;
     line-height: 1.5;
     margin-bottom: 1rem;
@@ -110,7 +110,7 @@
     padding-top: 1rem;
     border-top: 1px solid var(--border);
     font-size: 0.875rem;
-    color: #9ca3af;
+    color: #64748b;
 }
 
 .item-actions {
@@ -137,7 +137,7 @@
     grid-column: 1 / -1;
     text-align: center;
     padding: 4rem 2rem;
-    color: #9ca3af;
+    color: #64748b;
 }
 
 .empty-state p {
@@ -152,7 +152,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(15, 23, 42, 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -167,7 +167,7 @@
     padding: 2rem;
     max-width: 500px;
     width: 100%;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.1);
 }
 
 .modal-content h2 {
@@ -207,15 +207,16 @@
     display: flex;
     gap: 1rem;
     padding: 0.5rem;
-    background: rgba(255, 255, 255, 0.05);
+    background: #f1f5f9;
     border-radius: var(--radius-lg);
     margin-top: 1rem;
+    border: 1px solid var(--border);
 }
 
 .tab-btn {
     padding: 0.75rem 1.5rem;
     border-radius: var(--radius-md);
-    color: #9ca3af;
+    color: #64748b;
     font-weight: 600;
     transition: all 0.2s ease;
     background: transparent;
@@ -250,9 +251,9 @@
 }
 
 .data-table th {
-    background: rgba(255, 255, 255, 0.05);
+    background: #f8fafc;
     font-weight: 600;
-    color: #d1d5db;
+    color: #475569;
 }
 
 /* .. previous css .. */

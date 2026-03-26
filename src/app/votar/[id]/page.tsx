@@ -81,15 +81,7 @@ export default function VotingSessionPage() {
         }
     }, [submittedVotes, assembly])
 
-    useEffect(() => {
-        if (assembly && !protocol) {
-            // Generate simple hash from Assembly ID to be consistent
-            // Used btoa just to look like a hash
-            const hash = typeof window !== 'undefined' ? btoa(assembly.id).substring(0, 12).toUpperCase() : assembly.id.substring(0, 8).toUpperCase()
-            const year = new Date().getFullYear()
-            setProtocol(`PROT-${hash}-${year}`)
-        }
-    }, [assembly, protocol])
+    // Protocol is now set by the API after the first vote is submitted
 
     const loadAssemblyData = async () => {
         try {
@@ -101,6 +93,9 @@ export default function VotingSessionPage() {
             }
             const data = await res.json()
             setAssembly(data.assembly)
+            if (data.protocol) {
+                setProtocol(data.protocol)
+            }
 
             // Check if we already have votes (this would ideally come from the API)
             // But for now, if we loaded "receipt=true" or if local user tries to vote, it will be handled.
@@ -124,12 +119,23 @@ export default function VotingSessionPage() {
             const res = await fetch('/api/vote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agendaItemId: itemId, choice })
+                body: JSON.stringify({
+                    agendaItemId: itemId,
+                    choice,
+                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+                })
             })
 
             if (!res.ok) {
                 const data = await res.json()
                 throw new Error(data.error || 'Erro ao votar')
+            }
+
+            const data = await res.json()
+
+            // Store the unique protocol returned by the server (set only on first vote)
+            if (data.protocol && !protocol) {
+                setProtocol(data.protocol)
             }
 
             setSubmittedVotes(prev => [...prev, itemId])
@@ -160,7 +166,9 @@ export default function VotingSessionPage() {
                         <p><strong>Data:</strong> {new Date().toLocaleDateString()}</p>
                         <p><strong>Status:</strong> Concluído</p>
                         <div className="receipt-hash">
-                            Protocolo: {protocol}
+                            <div style={{ marginBottom: '0.4rem', fontWeight: 600, fontSize: '0.85rem', color: '#9ca3af', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Protocolo Único</div>
+                            <div style={{ fontFamily: 'monospace', fontSize: '1.1rem', letterSpacing: '0.15em', color: '#34d399' }}>{protocol || '—'}</div>
+                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>Gerado a partir dos dados do seu dispositivo</div>
                         </div>
                     </div>
 
@@ -199,55 +207,26 @@ export default function VotingSessionPage() {
                     {assembly.items.length === 0 ? (
                         <p className="empty-state">Nenhuma pauta disponível para votação.</p>
                     ) : (
-                        assembly.items.map(item => {
-                            const hasVoted = submittedVotes.includes(item.id)
-                            const myChoice = currentVote[item.id]
+                        assembly.items
+                            .filter(item => !(item.excludesRestricted && userInfo?.hasRestrictions))
+                            .map(item => {
+                                const hasVoted = submittedVotes.includes(item.id)
+                                const myChoice = currentVote[item.id]
 
-                            const isBlocked = item.excludesRestricted && userInfo?.hasRestrictions
-                            
-                            return (
-                                <div key={item.id} className={`vote-card ${hasVoted ? 'voted' : ''} ${isBlocked ? 'blocked' : ''}`}>
-                                    <div className="vote-card-header">
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                                            <div>
-                                                <span className="item-order">Item {item.order}</span>
-                                                <h3>{item.title}</h3>
+                                return (
+                                    <div key={item.id} className={`vote-card ${hasVoted ? 'voted' : ''}`}>
+                                        <div className="vote-card-header">
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                                <div>
+                                                    <span className="item-order">Item {item.order}</span>
+                                                    <h3>{item.title}</h3>
+                                                </div>
                                             </div>
-                                            {item.excludesRestricted && (
-                                                <span style={{
-                                                    padding: '0.25rem 0.75rem',
-                                                    borderRadius: '12px',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: '600',
-                                                    background: 'rgba(239, 68, 68, 0.1)',
-                                                    color: '#ef4444',
-                                                    border: '1px solid #ef4444'
-                                                }}>
-                                                    🔒 Bloqueada para Diretoria
-                                                </span>
-                                            )}
                                         </div>
-                                    </div>
 
-                                    {item.description && (
-                                        <p className="vote-description">{item.description}</p>
-                                    )}
-
-                                    {isBlocked && (
-                                        <div style={{
-                                            padding: '1rem',
-                                            background: 'rgba(239, 68, 68, 0.1)',
-                                            border: '1px solid #ef4444',
-                                            borderRadius: '8px',
-                                            marginBottom: '1rem',
-                                            color: '#ef4444'
-                                        }}>
-                                            <strong>⚠️ Você não pode votar nesta pauta</strong>
-                                            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#fca5a5' }}>
-                                                Esta pauta está bloqueada para membros da Diretoria.
-                                            </p>
-                                        </div>
-                                    )}
+                                        {item.description && (
+                                            <p className="vote-description">{item.description}</p>
+                                        )}
 
                                     <div className="vote-actions">
                                         {hasVoted ? (
@@ -259,10 +238,6 @@ export default function VotingSessionPage() {
                                                 {assembly.status !== 'OPEN' ? (
                                                     <div className="vote-locked">
                                                         <p>🔒 Votação Aguardando Liberação</p>
-                                                    </div>
-                                                ) : isBlocked ? (
-                                                    <div className="vote-locked">
-                                                        <p>🚫 Votação Bloqueada para Diretoria</p>
                                                     </div>
                                                 ) : (
                                                     <>

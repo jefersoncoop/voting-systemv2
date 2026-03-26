@@ -1,17 +1,17 @@
 :root {
-  /* Premium Corporate Palette - Light Theme */
-  --background: #f3f4f6;
-  --foreground: #111827;
+  /* Premium Soft Light Palette */
+  --background: #f8fafc;
+  --foreground: #334155;
   
-  --primary: #0c2856;
-  --primary-hover: #081a38;
-  --primary-glow: rgba(12, 40, 86, 0.3);
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-glow: rgba(99, 102, 241, 0.2);
   
   --surface: #ffffff;
-  --surface-hover: #f9fafb;
-  --border: #d1d5db;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
   
-  --success: #3ab54a;
+  --success: #10b981;
   --error: #ef4444;
   --warning: #f59e0b;
 

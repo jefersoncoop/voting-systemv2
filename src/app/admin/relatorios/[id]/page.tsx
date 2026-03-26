@@ -8,6 +8,8 @@ interface Voter {
     name: string
     cpf: string
     timestamp: string
+    deviceHash?: string | null
+    protocol?: string | null
 }
 
 interface ItemSummary {
@@ -108,7 +110,7 @@ export default function ReportPage() {
                             <th>Nome do Eleitor</th>
                             <th>CPF</th>
                             <th>Horário do 1º Voto</th>
-                            <th>Assinatura</th>
+                            <th>Protocolo / Hash do Dispositivo</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -117,7 +119,12 @@ export default function ReportPage() {
                                 <td>{voter.name}</td>
                                 <td className="mono">{voter.cpf}</td>
                                 <td>{new Date(voter.timestamp).toLocaleTimeString()}</td>
-                                <td className="signature-line">__________________________</td>
+                                <td className="mono" style={{ fontSize: '0.75rem', letterSpacing: '0.05em', wordBreak: 'break-all' }}>
+                                    {voter.protocol
+                                        ? <><strong>{voter.protocol}</strong><br /><span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{voter.deviceHash?.substring(0, 32)}…</span></>
+                                        : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>—</span>
+                                    }
+                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -126,7 +133,7 @@ export default function ReportPage() {
 
             <div className="report-footer">
                 <p>Sistema de Votação Digital - Relatório Gerado Automaticamente</p>
-                <p>Hash de Integridade: {Math.random().toString(36).substring(2).toUpperCase()}</p>
+                <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>Os hashes são gerados a partir do IP e User-Agent do dispositivo do eleitor, combinados com seu ID e o horário do voto</p>
             </div>
         </div>
     )

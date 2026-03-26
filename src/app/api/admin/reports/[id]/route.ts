@@ -55,15 +55,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             orderBy: { timestamp: 'asc' }
         })
 
-        // Deduplicate voters
-        const voterMap = new Map<string, { name: string, cpf: string, timestamp: Date }>()
+        // Deduplicate voters — keep entry of first vote only
+        const voterMap = new Map<string, { name: string, cpf: string, timestamp: Date, deviceHash: string | null, protocol: string | null }>()
 
         votes.forEach(vote => {
             if (!voterMap.has(vote.userId)) {
                 voterMap.set(vote.userId, {
                     name: vote.user.name,
                     cpf: maskCPF(vote.user.cpf),
-                    timestamp: vote.timestamp // First vote time
+                    timestamp: vote.timestamp,
+                    deviceHash: vote.deviceHash ?? null,
+                    protocol: vote.protocol ?? null
                 })
             }
         })

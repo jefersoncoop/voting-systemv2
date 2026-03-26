@@ -51,6 +51,8 @@ model Vote {
   choice        String   // APPROVE, REJECT, ABSTAIN
   timestamp     DateTime @default(now())
   ipAddress     String?  // Audit purpose
+  deviceHash    String?  // SHA-256 hash derived from IP + User-Agent + userId + assemblyId + timestamp
+  protocol      String?  // Unique protocol code shown to the voter
   
   userId        String
   user          User     @relation(fields: [userId], references: [id])
