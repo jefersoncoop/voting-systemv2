@@ -27,10 +27,3 @@ export async function GET(
     }
 }
 
-export async function DELETE(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: string, questionId: string }> }
-) {
-    // Optional: Add delete logic if needed
-    return NextResponse.json({ error: 'Not implemented' }, { status: 501 })
-}
