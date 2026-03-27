@@ -9,10 +9,20 @@ export async function GET(
     try {
         const { id } = await params
         const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        let payload = null
+        if (session) {
+            payload = await decrypt(session)
+        }
 
-        const payload = await decrypt(session)
-        if (!payload) return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 })
+        // Se não autenticado, retorna apenas informações básicas para o formulário público de perguntas
+        if (!payload) {
+            const assembly = await prisma.assembly.findUnique({
+                where: { id },
+                select: { id: true, title: true, status: true }
+            })
+            if (!assembly) return NextResponse.json({ error: 'Assembleia não encontrada' }, { status: 404 })
+            return NextResponse.json({ assembly, protocol: null })
+        }
 
         // Buscar informações de restrição do usuário diretamente do banco para garantir dados atualizados
         const user = await prisma.user.findUnique({

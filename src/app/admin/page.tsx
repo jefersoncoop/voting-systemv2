@@ -347,13 +347,20 @@ export default function AdminPage() {
                                     <span>📅 {new Date(assembly.startTime).toLocaleDateString()}</span>
                                     <span>📋 {assembly._count.items} itens</span>
                                 </div>
-                                <div className="item-actions">
+                                <div className="item-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                     <Link href={`/admin/assemblies/${assembly.id}`} className="btn btn-primary btn-sm">
-                                        Gerenciar Itens
+                                        Itens
+                                    </Link>
+                                    <Link href={`/admin/perguntas/${assembly.id}`} className="btn btn-outline btn-sm">
+                                        Perguntas
+                                    </Link>
+                                    <Link href={`/admin/sorteio/${assembly.id}`} className="btn btn-outline btn-sm">
+                                        Sorteio
                                     </Link>
                                     <button
-                                        className="btn btn-outline btn-danger"
+                                        className="btn btn-outline btn-danger btn-sm"
                                         onClick={() => deleteAssembly(assembly.id)}
+                                        style={{ marginLeft: 'auto' }}
                                     >
                                         Excluir
                                     </button>

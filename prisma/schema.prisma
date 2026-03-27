@@ -30,6 +30,7 @@ model Assembly {
   createdAt   DateTime @default(now())
   
   items       AgendaItem[]
+  questions   Question[]
 }
 
 model AgendaItem {
@@ -68,4 +69,15 @@ model SystemSettings {
   id          String   @id @default("global")
   require2FA  Boolean  @default(true)
   updatedAt   DateTime @updatedAt
+}
+
+model Question {
+  id                String   @id @default(uuid())
+  content           String
+  voterCpf          String
+  voterName         String
+  voterMunicipality String
+  assemblyId        String
+  assembly          Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
 }
