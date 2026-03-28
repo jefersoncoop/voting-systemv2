@@ -154,9 +154,6 @@ export default function VotarPage() {
                                         <Link href={`/votar/${assembly.id}?receipt=true`} className="enter-btn receipt-btn">
                                             Ver Comprovante 📄
                                         </Link>
-                                        <Link href={`/perguntas/${assembly.id}`} className="question-link" style={{ display: 'block', textAlign: 'center', marginTop: '1rem', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: '600' }}>
-                                            ¿ Tem dúvidas? Enviar Pergunta
-                                        </Link>
                                     </div>
                                 )
                             }
