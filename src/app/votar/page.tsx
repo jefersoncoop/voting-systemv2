@@ -73,9 +73,11 @@ export default function VotarPage() {
     const [assemblies, setAssemblies] = useState<Assembly[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+    const [userName, setUserName] = useState('')
 
     useEffect(() => {
         loadAssemblies()
+        loadUserInfo()
 
         // Auto-refresh every 5 seconds to check for status updates
         const interval = setInterval(() => {
@@ -114,6 +116,18 @@ export default function VotarPage() {
         }
     }
 
+    const loadUserInfo = async () => {
+        try {
+            const res = await fetch('/api/user/me')
+            if (res.ok) {
+                const data = await res.json()
+                setUserName(data.user.name)
+            }
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
     if (loading) return <div className="loading-screen"><div className="spinner"></div></div>
 
     return (
@@ -123,9 +137,16 @@ export default function VotarPage() {
                     <h1>Sala de Votação</h1>
                     <p>Selecione uma assembleia para participar</p>
                 </div>
-                <button onClick={handleLogout} className="logout-btn">
-                    Sair
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {userName && (
+                        <span style={{ fontSize: '0.9rem', color: 'var(--foreground)', fontWeight: '600' }}>
+                            {userName}
+                        </span>
+                    )}
+                    <button onClick={handleLogout} className="logout-btn">
+                        Sair
+                    </button>
+                </div>
             </header>
 
             <main className="vote-content">

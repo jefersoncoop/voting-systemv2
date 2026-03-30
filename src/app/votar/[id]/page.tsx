@@ -208,7 +208,7 @@ export default function VotingSessionPage() {
                             fontSize: '0.85rem',
                             color: '#9ca3af'
                         }}>
-                            <span style={{ fontWeight: '600', color: '#fff' }}>{userInfo.name}</span>
+                            <span style={{ fontWeight: '600', color: 'var(--foreground)' }}>{userInfo.name}</span>
                         </div>
                     )}
                 </div>
