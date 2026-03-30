@@ -68,7 +68,16 @@ export default function ReportPage() {
                     <h2>{data.assembly.title}</h2>
                     <p>Data de Emissão: {new Date().toLocaleString()}</p>
                 </div>
-                <button className="print-btn" onClick={() => window.print()}>🖨️ Imprimir / PDF</button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="print-btn" onClick={() => window.print()}>🖨️ Imprimir / PDF</button>
+                    <button
+                        className="print-btn"
+                        style={{ background: '#10b981', color: 'white', border: 'none' }}
+                        onClick={() => window.location.href = `/api/admin/reports/${id}/export`}
+                    >
+                        📗 Exportar Excel (.xls)
+                    </button>
+                </div>
             </div>
 
             <section className="section">
