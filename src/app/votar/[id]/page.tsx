@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import '../votar.css'
+import { getErrorMessage } from '@/lib/errors'
 
 interface AgendaItem {
     id: string
@@ -26,8 +27,7 @@ export default function VotingSessionPage() {
     const params = useParams()
     const id = params?.id as string
 
-    // Safety check for searchParams in client component
-    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+    const searchParams = useSearchParams()
 
     const [assembly, setAssembly] = useState<Assembly | null>(null)
     const [currentVote, setCurrentVote] = useState<{ [key: string]: string }>({}) // itemId -> choice
@@ -38,20 +38,7 @@ export default function VotingSessionPage() {
     const [protocol, setProtocol] = useState('')
     const [userInfo, setUserInfo] = useState<{ name: string; hasRestrictions: boolean } | null>(null)
 
-    useEffect(() => {
-        if (id) {
-            loadAssemblyData()
-            loadUserInfo()
-        }
-
-        const interval = setInterval(() => {
-            if (id) loadAssemblyData()
-        }, 5000)
-
-        return () => clearInterval(interval)
-    }, [id])
-
-    const loadUserInfo = async () => {
+    const loadUserInfo = useCallback(async () => {
         try {
             const res = await fetch('/api/user/me')
             if (res.ok) {
@@ -64,10 +51,58 @@ export default function VotingSessionPage() {
         } catch (err) {
             console.error('Erro ao carregar informações do usuário:', err)
         }
-    }
+    }, [])
+
+    const loadAssemblyData = useCallback(async () => {
+        try {
+            const res = await fetch(`/api/assembly/${id}`)
+            if (res.status === 401) return router.push('/login')
+            if (res.status === 404) {
+                setError('Assembleia não encontrada')
+                return
+            }
+            const data: { assembly: Assembly, protocol?: string } = await res.json()
+            setAssembly(data.assembly)
+            if (data.protocol) {
+                setProtocol(data.protocol)
+            }
+
+            if (data.assembly?.items) {
+                const votedIds = data.assembly.items
+                    .filter(item => item.votes && item.votes.length > 0)
+                    .map(item => item.id)
+                setSubmittedVotes(votedIds)
+
+                const choices: { [key: string]: string } = {}
+                data.assembly.items.forEach(item => {
+                    if (item.votes && item.votes.length > 0) {
+                        choices[item.id] = item.votes[0].choice
+                    }
+                })
+                setCurrentVote(choices)
+            }
+        } catch {
+            setError('Erro ao carregar dados')
+        } finally {
+            setLoading(false)
+        }
+    }, [id, router])
 
     useEffect(() => {
-        if (searchParams?.get('receipt') === 'true') {
+        if (id) {
+            void loadAssemblyData()
+            void loadUserInfo()
+        }
+
+        const interval = setInterval(() => {
+            if (id) void loadAssemblyData()
+        }, 5000)
+
+        return () => clearInterval(interval)
+    }, [id, loadAssemblyData, loadUserInfo])
+
+    useEffect(() => {
+        if (searchParams.get('receipt') === 'true') {
             setShowCompletion(true)
         }
     }, [searchParams])
@@ -81,43 +116,6 @@ export default function VotingSessionPage() {
             }
         }
     }, [submittedVotes, assembly])
-
-    // Protocol is now set by the API after the first vote is submitted
-
-    const loadAssemblyData = async () => {
-        try {
-            const res = await fetch(`/api/assembly/${id}`)
-            if (res.status === 401) return router.push('/login')
-            if (res.status === 404) {
-                setError('Assembleia não encontrada')
-                return
-            }
-            const data = await res.json()
-            setAssembly(data.assembly)
-            if (data.protocol) {
-                setProtocol(data.protocol)
-            }
-
-            if (data.assembly?.items) {
-                const votedIds = data.assembly.items
-                    .filter((item: any) => item.votes && item.votes.length > 0)
-                    .map((item: any) => item.id)
-                setSubmittedVotes(votedIds)
-
-                const choices: { [key: string]: string } = {}
-                data.assembly.items.forEach((item: any) => {
-                    if (item.votes && item.votes.length > 0) {
-                        choices[item.id] = item.votes[0].choice
-                    }
-                })
-                setCurrentVote(choices)
-            }
-        } catch (err) {
-            setError('Erro ao carregar dados')
-        } finally {
-            setLoading(false)
-        }
-    }
 
     const handleVote = async (itemId: string, choice: string) => {
         // Verificar se o item está bloqueado antes de tentar votar
@@ -152,8 +150,8 @@ export default function VotingSessionPage() {
 
             setSubmittedVotes(prev => [...prev, itemId])
             setCurrentVote(prev => ({ ...prev, [itemId]: choice }))
-        } catch (err: any) {
-            alert(err.message)
+        } catch (error: unknown) {
+            alert(getErrorMessage(error, 'Erro ao registrar voto'))
         }
     }
 

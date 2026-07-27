@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { decrypt } from '@/lib/auth'
+import { getAuthContext } from '@/lib/session'
+
+function csvCell(value: unknown) {
+    let text = String(value ?? '')
+    if (/^[=+\-@]/.test(text)) text = `'${text}`
+    return `"${text.replace(/"/g, '""')}"`
+}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-        const payload = await decrypt(session)
-        if (!payload || !payload.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        if (!auth.user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
         const { id } = await params
 
@@ -27,12 +31,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         if (!assembly) return NextResponse.json({ error: 'Assembleia não encontrada' }, { status: 404 })
 
-        const votes = await prisma.vote.findMany({
-            where: {
-                agendaItem: {
-                    assemblyId: id
-                }
-            },
+        const eligibleElectors = await prisma.assemblyElector.count({ where: { assemblyId: id } })
+
+        const participations = await prisma.participation.findMany({
+            where: { assemblyId: id },
             include: {
                 user: {
                     select: {
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                     }
                 }
             },
-            orderBy: { timestamp: 'asc' }
+            orderBy: { createdAt: 'asc' }
         })
 
         // CSV Generation
@@ -49,8 +51,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         let csv = '\uFEFF' // UTF-8 BOM for Excel
 
         // Header
-        csv += `RELATÓRIO DE VOTAÇÃO: ${assembly.title}\n`
+        csv += `RELATÓRIO DE VOTAÇÃO: ${csvCell(assembly.title)}\n`
         csv += `Data de Exportação: ${new Date().toLocaleString()}\n\n`
+        csv += `Eleitores habilitados: ${eligibleElectors}\n\n`
 
         // Section 1: Summary
         csv += `1. RESUMO DA APURAÇÃO\n`
@@ -61,31 +64,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             item.votes.forEach(v => {
                 if (v.choice in counts) counts[v.choice as keyof typeof counts]++
             })
-            csv += `"${item.title.replace(/"/g, '""')}"${SEP}${counts.APPROVE}${SEP}${counts.REJECT}${SEP}${counts.ABSTAIN}${SEP}${item.votes.length}\n`
+            csv += `${csvCell(item.title)}${SEP}${counts.APPROVE}${SEP}${counts.REJECT}${SEP}${counts.ABSTAIN}${SEP}${item.votes.length}\n`
         })
 
         csv += `\n\n`
 
         // Section 2: Voters
         csv += `2. LISTA DE VOTANTES\n`
-        csv += `Nome${SEP}CPF${SEP}Horário${SEP}Protocolo${SEP}Hash do Dispositivo\n`
+        csv += `Nome${SEP}CPF${SEP}Horário${SEP}Protocolo\n`
 
-        // Deduplicate voters for the list
-        const voterMap = new Map<string, any>()
-        votes.forEach(v => {
-            if (!voterMap.has(v.userId)) {
-                voterMap.set(v.userId, {
-                    name: v.user.name,
-                    cpf: v.user.cpf,
-                    timestamp: v.timestamp,
-                    protocol: v.protocol,
-                    deviceHash: v.deviceHash
-                })
-            }
-        })
-
-        Array.from(voterMap.values()).forEach(v => {
-            csv += `"${v.name.replace(/"/g, '""')}"${SEP}${v.cpf}${SEP}${new Date(v.timestamp).toLocaleString()}${SEP}${v.protocol || ''}${SEP}${v.deviceHash || ''}\n`
+        participations.forEach(participation => {
+            csv += `${csvCell(participation.user.name)}${SEP}${csvCell(participation.user.cpf)}${SEP}${csvCell(participation.createdAt.toLocaleString())}${SEP}${csvCell(participation.protocol)}\n`
         })
 
         const filename = `relatorio-votação-${assembly.title.replace(/\s+/g, '-').toLowerCase()}.csv`

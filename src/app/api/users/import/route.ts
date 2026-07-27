@@ -1,72 +1,170 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { decrypt, sanitizeCpf } from '@/lib/auth'
+import { sanitizeCpf } from '@/lib/auth'
+import { getAuthContext } from '@/lib/session'
+import { recordAuditEvent } from '@/lib/audit'
+import { isValidCpf, normalizePhone, parseDateOnly } from '@/lib/identity'
+import { syncAssemblyStatus } from '@/lib/assembly'
+
+interface ImportError {
+    cpf?: string
+    error: string
+}
 
 export async function POST(request: NextRequest) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-        const payload = await decrypt(session)
-        if (!payload || !payload.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        if (!auth.user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
         const body = await request.json()
-        const { users } = body // Expecting array of { name, cpf, birthDate, phone }
+        const users: unknown[] = Array.isArray(body.users) ? body.users : []
+        const assemblyId = typeof body.assemblyId === 'string' ? body.assemblyId : null
+        if (users.length === 0) return NextResponse.json({ error: 'Nenhum eleitor informado' }, { status: 400 })
 
-        if (!Array.isArray(users)) {
-            return NextResponse.json({ error: 'Formato inválido' }, { status: 400 })
+        if (assemblyId) {
+            const assemblyData = await prisma.assembly.findUnique({
+                where: { id: assemblyId }, select: { id: true, status: true, startTime: true, endTime: true }
+            })
+            if (!assemblyData) return NextResponse.json({ error: 'Assembleia não encontrada' }, { status: 404 })
+            const assembly = await syncAssemblyStatus(assemblyData)
+            if (!['DRAFT', 'SCHEDULED', 'OPEN'].includes(assembly.status)) {
+                return NextResponse.json({ error: 'A lista de eleitores está bloqueada após o encerramento da assembleia' }, { status: 409 })
+            }
         }
 
         let createdCount = 0
-        let errors = []
+        let updatedCount = 0
+        let assignedCount = 0
+        let alreadyAssignedCount = 0
+        const errors: ImportError[] = []
+        const processedCpfs = new Set<string>()
 
-        for (const user of users) {
-            // Basic Validation
-            if (!user.name || !user.cpf || !user.birthDate) {
-                errors.push({ cpf: user.cpf, error: 'Dados incompletos' })
+        for (const entry of users) {
+            if (!entry || typeof entry !== 'object') {
+                errors.push({ error: 'Linha inválida' })
+                continue
+            }
+            const user = entry as Record<string, unknown>
+            const name = typeof user.name === 'string' ? user.name.trim() : ''
+            const rawCpf = typeof user.cpf === 'string' ? user.cpf : ''
+            const birthDate = parseDateOnly(user.birthDate)
+            if (!name || !rawCpf || !birthDate) {
+                errors.push({ cpf: rawCpf || undefined, error: 'Dados incompletos ou data inválida' })
                 continue
             }
 
-            const cleanCpf = sanitizeCpf(user.cpf)
-            if (cleanCpf.length !== 11) {
-                errors.push({ cpf: user.cpf, error: 'CPF inválido' })
+            const cleanCpf = sanitizeCpf(rawCpf)
+            if (!isValidCpf(cleanCpf)) {
+                errors.push({ cpf: rawCpf, error: 'CPF inválido' })
+                continue
+            }
+            if (processedCpfs.has(cleanCpf)) {
+                errors.push({ cpf: rawCpf, error: 'CPF repetido no arquivo' })
+                continue
+            }
+            processedCpfs.add(cleanCpf)
+
+            const phone = normalizePhone(user.phone)
+            if (phone === undefined) {
+                errors.push({ cpf: rawCpf, error: 'WhatsApp inválido' })
                 continue
             }
 
             try {
-                // Check duplicate
                 const existing = await prisma.user.findUnique({ where: { cpf: cleanCpf } })
-                if (existing) {
-                    // Optional: Update? For now, skip
-                    errors.push({ cpf: user.cpf, error: 'Já cadastrado' })
+                if (existing?.isAdmin) {
+                    errors.push({ cpf: rawCpf, error: 'Usuário administrativo não pode ser eleitor' })
                     continue
                 }
 
-                await prisma.user.create({
-                    data: {
-                        name: user.name,
-                        cpf: cleanCpf,
-                        birthDate: new Date(user.birthDate), // Expecting YYYY-MM-DD or parseable string
-                        phone: user.phone || null,
-                        isAdmin: false,
-                        hasRestrictions: !!user.hasRestrictions
+                if (existing) {
+                    let wasAssigned = false
+                    let wasAlreadyAssigned = false
+                    await prisma.$transaction(async tx => {
+                        await tx.user.update({
+                            where: { id: existing.id },
+                            data: {
+                                name,
+                                birthDate,
+                                ...(typeof user.phone === 'string' && user.phone.trim() ? { phone } : {}),
+                                ...(typeof user.hasRestrictions === 'boolean'
+                                    ? { hasRestrictions: user.hasRestrictions }
+                                    : {})
+                            }
+                        })
+                        await tx.session.updateMany({
+                            where: { userId: existing.id, revokedAt: null },
+                            data: { revokedAt: new Date() }
+                        })
+
+                        if (assemblyId) {
+                            const membership = await tx.assemblyElector.findUnique({
+                                where: { assemblyId_userId: { assemblyId, userId: existing.id } }
+                            })
+                            if (membership) {
+                                wasAlreadyAssigned = true
+                            } else {
+                                await tx.assemblyElector.create({ data: { assemblyId, userId: existing.id } })
+                                wasAssigned = true
+                            }
+                        }
+                    })
+                    updatedCount++
+                    if (wasAssigned) assignedCount++
+                    if (wasAlreadyAssigned) alreadyAssignedCount++
+                    continue
+                }
+
+                await prisma.$transaction(async tx => {
+                    const created = await tx.user.create({
+                        data: {
+                            name,
+                            cpf: cleanCpf,
+                            birthDate,
+                            phone,
+                            isAdmin: false,
+                            hasRestrictions: user.hasRestrictions === true
+                        }
+                    })
+                    if (assemblyId) {
+                        await tx.assemblyElector.create({ data: { assemblyId, userId: created.id } })
                     }
                 })
                 createdCount++
-            } catch (err) {
-                errors.push({ cpf: user.cpf, error: 'Erro ao salvar' })
+                if (assemblyId) assignedCount++
+            } catch {
+                errors.push({ cpf: rawCpf, error: 'Erro ao salvar' })
             }
         }
+
+        await recordAuditEvent({
+            type: assemblyId ? 'ASSEMBLY_ELECTORS_IMPORTED' : 'USERS_IMPORTED',
+            request,
+            actorUserId: auth.user.id,
+            assemblyId: assemblyId ?? undefined,
+            targetId: assemblyId ?? undefined,
+            metadata: {
+                created: createdCount,
+                updated: updatedCount,
+                assigned: assignedCount,
+                alreadyAssigned: alreadyAssignedCount,
+                errors: errors.length,
+                total: users.length
+            }
+        })
 
         return NextResponse.json({
             success: true,
             created: createdCount,
+            updated: updatedCount,
+            assigned: assignedCount,
+            alreadyAssigned: alreadyAssignedCount,
             errors,
             totalProcessed: users.length
         })
-
     } catch (error) {
-        console.error(error)
+        console.error('Erro ao importar eleitores:', error)
         return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
     }
 }

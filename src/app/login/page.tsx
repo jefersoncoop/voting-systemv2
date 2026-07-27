@@ -11,6 +11,7 @@ export default function LoginPage() {
     const [birthDate, setBirthDate] = useState('')
     const [code, setCode] = useState('')
     const [challenge, setChallenge] = useState('')
+    const [verificationHint, setVerificationHint] = useState('')
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
     const [userInfo, setUserInfo] = useState<{ name: string; hasRestrictions: boolean } | null>(null)
@@ -52,9 +53,12 @@ export default function LoginPage() {
                 }, 2000)
             } else {
                 setChallenge(data.challenge)
+                setVerificationHint(data.developmentCode
+                    ? `Ambiente de desenvolvimento — código: ${data.developmentCode}`
+                    : 'Um código de 6 dígitos foi enviado ao WhatsApp cadastrado.')
                 setStep(2)
             }
-        } catch (err) {
+        } catch {
             setError('Erro de conexão')
         } finally {
             setLoading(false)
@@ -96,7 +100,7 @@ export default function LoginPage() {
                     router.push('/votar')
                 }
             }, 2000)
-        } catch (err) {
+        } catch {
             setError('Erro de conexão')
         } finally {
             setLoading(false)
@@ -167,7 +171,7 @@ export default function LoginPage() {
                     <form onSubmit={handleStep2} className="login-form">
                         <h2>Verificação de Segurança</h2>
                         <p className="info-text">
-                            Um código de 6 dígitos foi enviado para seu email e WhatsApp cadastrados.
+                            {verificationHint}
                         </p>
 
                         <div className="form-group">

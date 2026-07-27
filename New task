@@ -1,0 +1,278 @@
+# Roadmap de evolução — Sistema de Votação
+
+Objetivo: transformar o MVP atual em uma aplicação segura, auditável e adequada para assembleias reais.
+
+```mermaid
+flowchart LR
+    A["Fase 0<br/>Estabilização"] --> B["Fase 1<br/>Segurança"]
+    B --> C["Fase 2<br/>Integridade do voto"]
+    C --> D["Fase 3<br/>Banco e infraestrutura"]
+    D --> E["Fase 4<br/>Testes e observabilidade"]
+    E --> F["Fase 5<br/>Homologação e produção"]
+```
+
+Estimativa geral: 8 a 10 semanas para uma pessoa desenvolvedora, dependendo dos fornecedores de 2FA e hospedagem.
+
+## Fase 0 — Estabilização técnica
+
+Prazo: 3–5 dias  
+Prioridade: imediata
+
+Entregas:
+
+- Corrigir os 27 erros e 38 warnings do ESLint.
+- Remover usos desnecessários de `any`.
+- Corrigir dependências dos `useEffect`.
+- Substituir Google Fonts remotas por fontes locais ou fallback seguro.
+- Remover o banco `dev.db` obsoleto da raiz.
+- Retirar bancos SQLite do versionamento.
+- Remover a pasta acidental `%5Bid%5D`.
+- Atualizar `README.md` com instalação, variáveis, migrations, seed e execução.
+- Adicionar `.env.example` sem valores secretos.
+- Configurar scripts separados:
+  - `lint`
+  - `typecheck`
+  - `test`
+  - `build`
+  - `check`
+
+Critérios de conclusão:
+
+- `npm run lint` passa sem erros.
+- `npm run build` funciona sem depender de downloads externos.
+- Repositório não contém banco, dados pessoais ou segredos.
+- Uma nova pessoa consegue executar o projeto apenas pelo README.
+
+## Fase 1 — Autenticação e segurança
+
+Prazo: 1–2 semanas  
+Prioridade: crítica
+
+### Sessões
+
+- Tornar `JWT_SECRET` obrigatório.
+- Impedir inicialização em produção com segredo ausente ou fraco.
+- Tipar o conteúdo do JWT.
+- Adicionar `issuer`, `audience` e identificador de sessão.
+- Conferir usuário e perfil administrativo no banco em operações críticas.
+- Implementar revogação de sessão.
+- Invalidar sessões quando o usuário for bloqueado ou tiver o papel alterado.
+- Definir explicitamente `path`, expiração e políticas do cookie.
+
+### Login
+
+- Unificar mensagens de erro para evitar enumeração de CPFs.
+- Implementar rate limiting por IP e por CPF.
+- Registrar tentativas suspeitas sem armazenar dados sensíveis desnecessários.
+- Validar CPF pelo algoritmo oficial, não apenas pelo tamanho.
+- Padronizar tratamento de datas e timezone.
+
+### 2FA
+
+- Usar `crypto.randomInt()` para gerar o código.
+- Armazenar apenas o hash do código.
+- Validade de aproximadamente cinco minutos.
+- Uso único e máximo de tentativas.
+- Invalidar desafios anteriores ao solicitar novo código.
+- Integrar provedor real de e-mail ou WhatsApp.
+- Remover código e CPF dos logs.
+- Exibir na interface somente o canal mascarado de envio.
+
+Critérios de conclusão:
+
+- Não é possível forjar sessão usando uma configuração padrão.
+- Tentativas repetidas de login são limitadas.
+- Um código 2FA utilizado não pode ser reutilizado.
+- Alterar ou desativar um administrador invalida seus privilégios.
+
+## Fase 2 — Integridade, sigilo e auditabilidade
+
+Prazo: 2 semanas  
+Prioridade: crítica
+
+### Ciclo da assembleia
+
+Criar estados tipados:
+
+- `DRAFT`
+- `SCHEDULED`
+- `OPEN`
+- `CLOSED`
+- `ARCHIVED`
+
+Implementar transições permitidas no backend. Exemplo: uma assembleia encerrada não pode ser reaberta sem uma operação excepcional registrada.
+
+Também:
+
+- Validar `startTime < endTime`.
+- Recusar votos antes do início e depois do encerramento.
+- Impedir edição das pautas depois que a votação começar.
+- Fechar automaticamente a assembleia no horário final, se essa for a regra aprovada.
+
+### Votos
+
+- Proibir exclusão física de votos.
+- Substituir exclusões por arquivamento lógico das entidades relacionadas.
+- Criar trilha append-only para eventos administrativos.
+- Registrar abertura, encerramento, inclusão de pauta e tentativa de alteração.
+- Criar protocolo único por participação na assembleia, não por voto.
+- Não devolver IP, hash interno ou informações desnecessárias ao navegador.
+- Definir política de retenção de IP conforme LGPD.
+- Separar identidade do eleitor e conteúdo do voto quando houver voto secreto.
+
+### Resultados
+
+- Proteger `/api/results`.
+- Bloquear resultados parciais por padrão.
+- Permitir divulgação apenas após encerramento ou por configuração explícita.
+- Separar:
+  - quórum;
+  - lista de participantes;
+  - conteúdo dos votos;
+  - resultado agregado.
+
+Critérios de conclusão:
+
+- Nenhum voto é aceito fora da janela autorizada.
+- Votos registrados não podem ser apagados pela interface administrativa.
+- Resultados parciais não podem ser obtidos por chamadas diretas à API.
+- Toda ação administrativa relevante possui autor, horário e motivo.
+
+## Fase 3 — Dados e infraestrutura
+
+Prazo: 1–2 semanas  
+Prioridade: alta
+
+- Migrar SQLite para PostgreSQL.
+- Usar enums ou constraints para status e escolhas.
+- Criar índices para consultas de votação e relatórios.
+- Executar votos em transações adequadas.
+- Revisar concorrência para múltiplos votos simultâneos.
+- Configurar ambientes separados:
+  - desenvolvimento;
+  - homologação;
+  - produção.
+- Configurar backups automáticos e restauração testada.
+- Criptografar banco e tráfego.
+- Utilizar gerenciador de segredos da plataforma.
+- Definir migrações como etapa controlada do deploy.
+- Sanitizar células de CSV contra formula injection.
+- Evitar incluir CPF completo em exportações por padrão.
+
+Critérios de conclusão:
+
+- Teste concorrente não produz votos duplicados.
+- Backup pode ser restaurado em ambiente isolado.
+- Produção não compartilha dados ou segredos com desenvolvimento.
+- Exportações não executam fórmulas ao serem abertas no Excel.
+
+## Fase 4 — Testes e observabilidade
+
+Prazo: 1–2 semanas  
+Prioridade: alta
+
+### Testes unitários
+
+- Sanitização e validação de CPF.
+- Transições de estado.
+- Validade e expiração do 2FA.
+- Regras de restrição.
+- Sanitização de CSV.
+- Cálculo dos resultados.
+
+### Testes de integração
+
+- Login completo.
+- Sessão inválida e expirada.
+- Autorização administrativa.
+- Voto duplicado.
+- Voto em assembleia fechada.
+- Voto concorrente.
+- Eleitor impedido.
+- Ocultação de resultados.
+- Exclusões e preservação histórica.
+
+### Testes ponta a ponta
+
+- Administrador cria e abre uma assembleia.
+- Eleitor autentica e vota.
+- Voto fica bloqueado após confirmação.
+- Assembleia encerra.
+- Resultado e relatório são publicados.
+- Sessão expira ou é revogada.
+
+### Observabilidade
+
+- Logs estruturados e sem CPF completo.
+- Identificador de correlação por requisição.
+- Monitoramento de erros.
+- Alertas para falhas de login, banco e envio de 2FA.
+- Métricas de votos aceitos e recusados.
+- Auditoria distinta dos logs técnicos.
+
+Critérios de conclusão:
+
+- Cobertura mínima definida para regras críticas.
+- Pipeline bloqueia merge quando lint, tipos, testes ou build falham.
+- Falhas em produção geram alertas sem expor dados pessoais.
+
+## Fase 5 — LGPD, homologação e produção
+
+Prazo: 1 semana  
+Prioridade: obrigatória antes do lançamento
+
+- Mapear todos os dados pessoais armazenados.
+- Documentar finalidade e prazo de retenção.
+- Definir quem pode acessar CPF, IP e lista de votantes.
+- Criar política de descarte ou anonimização.
+- Revisar textos de consentimento e transparência.
+- Realizar revisão externa de segurança.
+- Executar teste de carga representativo.
+- Fazer assembleia simulada completa.
+- Preparar plano de contingência:
+  - indisponibilidade do 2FA;
+  - queda do banco;
+  - interrupção durante votação;
+  - extensão ou cancelamento da assembleia.
+- Criar runbook para operadores.
+- Formalizar critérios de abertura e encerramento.
+- Obter aprovação jurídica sobre voto secreto, auditoria e retenção.
+
+Critérios de go-live:
+
+- Nenhum risco crítico em aberto.
+- Teste de restauração aprovado.
+- Teste de carga aprovado.
+- Fluxo completo homologado por administradores e eleitores.
+- Plano de contingência ensaiado.
+- Segurança e LGPD formalmente aprovadas.
+
+## Backlog posterior
+
+Após estabilizar a produção:
+
+- WebSocket ou Server-Sent Events no lugar do polling.
+- Acessibilidade WCAG 2.2 AA.
+- Internacionalização.
+- Segundo administrador para ações críticas.
+- Assinatura digital dos relatórios.
+- Verificação pública de protocolo sem revelar o voto.
+- Exportação PDF assinada.
+- Painel de auditoria.
+- Integração com sistema corporativo de usuários.
+- Autenticação por provedor de identidade, como Microsoft Entra ID ou Google Workspace.
+
+## Ordem prática dos primeiros trabalhos
+
+Para as próximas entregas, eu seguiria esta sequência:
+
+1. Corrigir lint, build e organização do repositório.
+2. Proteger resultados e validar estados/datas.
+3. Corrigir segredo JWT e autorização administrativa.
+4. Implementar rate limiting e 2FA real.
+5. Tornar registros de voto não destrutíveis.
+6. Migrar para PostgreSQL.
+7. Criar testes automatizados.
+8. Preparar homologação, segurança e LGPD.
+
+O marco mais importante é o final da Fase 2: antes dele o sistema deve continuar sendo tratado exclusivamente como MVP de demonstração.

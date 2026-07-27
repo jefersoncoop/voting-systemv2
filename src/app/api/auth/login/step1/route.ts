@@ -1,105 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sanitizeCpf } from '@/lib/auth'
+import { consumeRateLimit } from '@/lib/rate-limit'
+import { createSession, getClientIp, setSessionCookie } from '@/lib/session'
+import { createTwoFactorChallenge } from '@/lib/two-factor'
+import { recordAuditEvent } from '@/lib/audit'
+import { isValidCpf } from '@/lib/identity'
+
+const INVALID_CREDENTIALS = 'CPF ou data de nascimento inválidos'
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { cpf, birthDate } = body
+    try {
+        const body = await request.json()
+        const cpf = typeof body.cpf === 'string' ? body.cpf : ''
+        const birthDate = typeof body.birthDate === 'string' ? body.birthDate : ''
+        if (!cpf || !birthDate) return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
 
-    if (!cpf || !birthDate) {
-      return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
-    }
+        const cleanCpf = sanitizeCpf(cpf)
+        if (process.env.NODE_ENV === 'production' && !isValidCpf(cleanCpf)) {
+            return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 })
+        }
+        const ip = getClientIp(request)
+        const [ipLimit, cpfLimit] = await Promise.all([
+            consumeRateLimit({ action: 'LOGIN_IP', key: ip, limit: 20, windowMs: 15 * 60 * 1000 }),
+            consumeRateLimit({ action: 'LOGIN_CPF', key: cleanCpf, limit: 5, windowMs: 15 * 60 * 1000 })
+        ])
+        if (!ipLimit.allowed || !cpfLimit.allowed) {
+            const retryAfter = Math.max(ipLimit.retryAfterSeconds, cpfLimit.retryAfterSeconds)
+            return NextResponse.json(
+                { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' },
+                { status: 429, headers: { 'Retry-After': retryAfter.toString() } }
+            )
+        }
 
-    const cleanCpf = sanitizeCpf(cpf)
-    
-    // Normalize date to start of day for comparison if needed, 
-    // but Prisma/SQLite usually handles ISO strings. 
-    // Let's assume the frontend sends YYYY-MM-DD
-    
-    const user = await prisma.user.findUnique({
-      where: { cpf: cleanCpf },
-    })
+        const user = await prisma.user.findUnique({ where: { cpf: cleanCpf } })
+        const inputDate = new Date(birthDate)
+        const birthMatches = user && !Number.isNaN(inputDate.getTime())
+            && user.birthDate.toISOString().split('T')[0] === inputDate.toISOString().split('T')[0]
 
-    if (!user) {
-      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
-    }
+        if (!user || !birthMatches) {
+            await recordAuditEvent({ type: 'LOGIN_REJECTED', request, metadata: { reason: 'INVALID_CREDENTIALS' } })
+            return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 })
+        }
 
-    // Simple date comparison - ensuring dates match (ignoring time if possible, but simplest is ISO check)
-    const userBirth = new Date(user.birthDate).toISOString().split('T')[0]
-    const inputBirth = new Date(birthDate).toISOString().split('T')[0]
+        const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } })
+        if (settings?.require2FA === false) {
+            const { token } = await createSession(user, request)
+            const response = NextResponse.json({
+                success: true,
+                skip2FA: true,
+                user: { name: user.name, isAdmin: user.isAdmin, hasRestrictions: user.hasRestrictions }
+            })
+            setSessionCookie(response, token)
+            await recordAuditEvent({ type: 'LOGIN_SUCCEEDED', request, actorUserId: user.id, metadata: { twoFactor: false } })
+            return response
+        }
 
-    if (userBirth !== inputBirth) {
-       return NextResponse.json({ error: 'Dados não conferem' }, { status: 401 })
-    }
-
-    // Check if 2FA is required
-    let require2FA = true
-    const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } })
-    if (settings) require2FA = settings.require2FA
-
-    if (!require2FA) {
-        // Skip 2FA sequence, create real session Token
-        const { encrypt } = await import('@/lib/auth')
-        const sessionToken = await encrypt({
-            userId: user.id,
-            isAdmin: user.isAdmin,
-            name: user.name,
-            hasRestrictions: user.hasRestrictions
-        })
-
-        const { cookies } = await import('next/headers')
-        const cookieStore = await cookies()
-        cookieStore.set('session', sessionToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 60 * 60 * 4 // 4 hours
-        })
-
+        const challenge = await createTwoFactorChallenge(user)
+        await recordAuditEvent({ type: 'TWO_FACTOR_SENT', request, actorUserId: user.id, metadata: { channel: challenge.channel } })
         return NextResponse.json({
             success: true,
-            skip2FA: true,
-            user: {
-                name: user.name,
-                isAdmin: user.isAdmin,
-                hasRestrictions: user.hasRestrictions
-            }
+            challenge: challenge.token,
+            channel: challenge.channel,
+            developmentCode: challenge.developmentCode
         })
+    } catch (error) {
+        console.error('Erro no primeiro passo do login:', error)
+        return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
     }
-
-    // Success Step 1
-    // Generate a numeric 2FA token (Mocked for now)
-    const token = Math.floor(100000 + Math.random() * 900000).toString()
-    
-    console.log(`[MOCK 2FA] Token para CPF ${cpf}: ${token}`)
-
-    // In a real app, we would save this token in Redis/DB with expiration
-    // For this stateless MVP (without external redis), we can sign a temporary "Pre-Auth" JWT 
-    // that contains the correct 2FA code, and send it to the client (encrypted).
-    // The client sends it back with the code they typed.
-    // OR we just assume the code is valid implementation for now.
-    
-    // Better approach for MVP: Return a signed JWT that contains the "expected" code 
-    // and userId. The client doesn't see it (it's httpOnly cookie preferably, or just returned payload).
-    // Let's return a "challenge" token.
-    
-    const { encrypt } = await import('@/lib/auth')
-    const challengeToken = await encrypt({ 
-        userId: user.id, 
-        code: token, 
-        step: '2fa_verification' 
-    })
-
-    return NextResponse.json({ 
-      success: true, 
-      challenge: challengeToken,
-      // For dev convenience, we return the code in the response body during dev mode only?
-      // No, let's keep it clean. It's in the console (server-side).
-    })
-
-  } catch (error) {
-    console.error(error)
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
-  }
 }

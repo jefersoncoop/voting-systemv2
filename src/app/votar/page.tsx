@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import './votar.css'
@@ -75,31 +75,19 @@ export default function VotarPage() {
     const [error, setError] = useState('')
     const [userName, setUserName] = useState('')
 
-    useEffect(() => {
-        loadAssemblies()
-        loadUserInfo()
-
-        // Auto-refresh every 5 seconds to check for status updates
-        const interval = setInterval(() => {
-            loadAssemblies()
-        }, 5000)
-
-        return () => clearInterval(interval)
-    }, [])
-
-    const loadAssemblies = async () => {
+    const loadAssemblies = useCallback(async () => {
         try {
             const res = await fetch('/api/assembly')
             if (res.status === 401) return router.push('/login')
             const data = await res.json()
             // Filter Active and Future Assemblies (CLOSED are hidden)
             setAssemblies(data.assemblies.filter((a: Assembly) => a.status !== 'CLOSED'))
-        } catch (err) {
+        } catch {
             setError('Erro ao carregar assembleias')
         } finally {
             setLoading(false)
         }
-    }
+    }, [router])
 
     const isFuture = (dateString: string) => {
         return new Date(dateString).getTime() > new Date().getTime()
@@ -116,7 +104,7 @@ export default function VotarPage() {
         }
     }
 
-    const loadUserInfo = async () => {
+    const loadUserInfo = useCallback(async () => {
         try {
             const res = await fetch('/api/user/me')
             if (res.ok) {
@@ -126,7 +114,17 @@ export default function VotarPage() {
         } catch (err) {
             console.error(err)
         }
-    }
+    }, [])
+
+    useEffect(() => {
+        void loadAssemblies()
+        void loadUserInfo()
+
+        // Auto-refresh every 5 seconds to check for status updates
+        const interval = setInterval(loadAssemblies, 5000)
+
+        return () => clearInterval(interval)
+    }, [loadAssemblies, loadUserInfo])
 
     if (loading) return <div className="loading-screen"><div className="spinner"></div></div>
 

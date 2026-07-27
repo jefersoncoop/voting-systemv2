@@ -8,7 +8,6 @@ interface Voter {
     name: string
     cpf: string
     timestamp: string
-    deviceHash?: string | null
     protocol?: string | null
 }
 
@@ -31,6 +30,7 @@ interface ReportData {
         status: string
     }
     voters: Voter[]
+    eligibleElectors: number
     itemSummaries: ItemSummary[]
 }
 
@@ -111,7 +111,10 @@ export default function ReportPage() {
 
             <section className="section page-break">
                 <h3>2. Lista de Presença e Votantes</h3>
-                <p className="subtitle">Total de votantes participantes: {data.voters.length}</p>
+                <p className="subtitle">
+                    Participantes: {data.voters.length} de {data.eligibleElectors} eleitores habilitados
+                    {data.eligibleElectors > 0 ? ` (${Math.round((data.voters.length / data.eligibleElectors) * 100)}%)` : ''}
+                </p>
 
                 <table className="voters-table">
                     <thead>
@@ -119,7 +122,7 @@ export default function ReportPage() {
                             <th>Nome do Eleitor</th>
                             <th>CPF</th>
                             <th>Horário do 1º Voto</th>
-                            <th>Protocolo / Hash do Dispositivo</th>
+                            <th>Protocolo de Participação</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -129,10 +132,7 @@ export default function ReportPage() {
                                 <td className="mono">{voter.cpf}</td>
                                 <td>{new Date(voter.timestamp).toLocaleTimeString()}</td>
                                 <td className="mono" style={{ fontSize: '0.75rem', letterSpacing: '0.05em', wordBreak: 'break-all' }}>
-                                    {voter.protocol
-                                        ? <><strong>{voter.protocol}</strong><br /><span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{voter.deviceHash?.substring(0, 32)}…</span></>
-                                        : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>—</span>
-                                    }
+                                    {voter.protocol ? <strong>{voter.protocol}</strong> : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>—</span>}
                                 </td>
                             </tr>
                         ))}
@@ -142,7 +142,7 @@ export default function ReportPage() {
 
             <div className="report-footer">
                 <p>Sistema de Votação Digital - Relatório Gerado Automaticamente</p>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>Os hashes são gerados a partir do IP e User-Agent do dispositivo do eleitor, combinados com seu ID e o horário do voto</p>
+                <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>A lista considera apenas os eleitores habilitados especificamente para esta assembleia.</p>
             </div>
         </div>
     )

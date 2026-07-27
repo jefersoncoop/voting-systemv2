@@ -1,15 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import './admin.css'
+import { getErrorMessage } from '@/lib/errors'
+import Pagination from '@/components/Pagination'
+
+const VOTERS_PER_PAGE = 10
 
 interface User {
     id: string
     name: string
     cpf: string
     birthDate: string
+    phone: string | null
     hasRestrictions: boolean
 }
 
@@ -22,7 +27,13 @@ interface Assembly {
     status: string
     _count: {
         items: number
+        electors: number
     }
+}
+
+interface ImportError {
+    cpf?: string
+    error: string
 }
 
 export default function AdminPage() {
@@ -43,11 +54,12 @@ export default function AdminPage() {
 
     // Voters State
     const [voters, setVoters] = useState<User[]>([])
-    const [newVoter, setNewVoter] = useState({ name: '', cpf: '', birthDate: '', hasRestrictions: false })
+    const [newVoter, setNewVoter] = useState({ name: '', cpf: '', birthDate: '', phone: '', hasRestrictions: false })
     const [searchQuery, setSearchQuery] = useState('')
+    const [voterPage, setVoterPage] = useState(1)
     const [showEditVoterModal, setShowEditVoterModal] = useState(false)
     const [editingVoter, setEditingVoter] = useState<User | null>(null)
-    const [editFormData, setEditFormData] = useState({ name: '', cpf: '', birthDate: '', hasRestrictions: false })
+    const [editFormData, setEditFormData] = useState({ name: '', cpf: '', birthDate: '', phone: '', hasRestrictions: false })
 
     const [loading, setLoading] = useState(true)
     const [showAssemblyModal, setShowAssemblyModal] = useState(false)
@@ -59,13 +71,7 @@ export default function AdminPage() {
     const [importText, setImportText] = useState('')
     const [importStatus, setImportStatus] = useState('')
 
-    useEffect(() => {
-        if (activeTab === 'assemblies') loadAssemblies()
-        else if (activeTab === 'voters') loadVoters()
-        else loadSettings()
-    }, [activeTab])
-
-    const loadSettings = async () => {
+    const loadSettings = useCallback(async () => {
         setLoading(true)
         try {
             const res = await fetch('/api/settings')
@@ -74,12 +80,12 @@ export default function AdminPage() {
                 const data = await res.json()
                 if (data.settings) setRequire2FA(data.settings.require2FA)
             }
-        } catch (err) {
+        } catch {
             setError('Erro ao carregar configurações')
         } finally {
             setLoading(false)
         }
-    }
+    }, [router])
 
     const saveSettings = async () => {
         setLoading(true)
@@ -92,40 +98,46 @@ export default function AdminPage() {
             })
             if (!res.ok) throw new Error('Erro ao salvar configurações')
             alert('Configurações salvas com sucesso!')
-        } catch (err: any) {
-            setError(err.message || 'Erro ao salvar config')
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Erro ao salvar configurações'))
         } finally {
             setLoading(false)
         }
     }
 
-    const loadAssemblies = async () => {
+    const loadAssemblies = useCallback(async () => {
         setLoading(true)
         try {
             const res = await fetch('/api/assembly')
             if (res.status === 401) return router.push('/login')
             const data = await res.json()
             setAssemblies(data.assemblies)
-        } catch (err) {
+        } catch {
             setError('Erro ao carregar assembleias')
         } finally {
             setLoading(false)
         }
-    }
+    }, [router])
 
-    const loadVoters = async () => {
+    const loadVoters = useCallback(async () => {
         setLoading(true)
         try {
             const res = await fetch('/api/users')
             if (res.status === 401) return router.push('/login')
             const data = await res.json()
             setVoters(data.users)
-        } catch (err) {
+        } catch {
             setError('Erro ao carregar eleitores')
         } finally {
             setLoading(false)
         }
-    }
+    }, [router])
+
+    useEffect(() => {
+        if (activeTab === 'assemblies') void loadAssemblies()
+        else if (activeTab === 'voters') void loadVoters()
+        else void loadSettings()
+    }, [activeTab, loadAssemblies, loadSettings, loadVoters])
 
     const createAssembly = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -142,9 +154,9 @@ export default function AdminPage() {
 
             setNewAssembly({ title: '', description: '', startTime: '', endTime: '' })
             setShowAssemblyModal(false)
-            loadAssemblies()
-        } catch (err: any) {
-            setError(err.message)
+            void loadAssemblies()
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Erro ao criar assembleia'))
         }
     }
 
@@ -180,12 +192,12 @@ export default function AdminPage() {
                 throw new Error(data.error || 'Erro ao criar eleitor')
             }
 
-            setNewVoter({ name: '', cpf: '', birthDate: '', hasRestrictions: false })
+            setNewVoter({ name: '', cpf: '', birthDate: '', phone: '', hasRestrictions: false })
             setShowVoterModal(false)
-            loadVoters()
-        } catch (err: any) {
-            setError(err.message || 'Erro ao criar eleitor. Verifique os dados e tente novamente.')
-            console.error('Erro ao criar eleitor:', err)
+            void loadVoters()
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Erro ao criar eleitor. Verifique os dados e tente novamente.'))
+            console.error('Erro ao criar eleitor:', error)
         }
     }
 
@@ -197,14 +209,16 @@ export default function AdminPage() {
             const usersToImport = lines.map(line => {
                 const parts = line.split(/[;,]/).map(p => p.trim())
                 // Expected: Name, CPF, Date, Phone(opt), Restricted(opt)
-                const isRestricted = parts[4]?.toLowerCase() === 'sim' || parts[4]?.toLowerCase() === 'true'
+                const restrictionValue = parts[4]?.toLowerCase()
 
                 return {
                     name: parts[0],
                     cpf: parts[1],
                     birthDate: parts[2],
                     phone: parts[3] || undefined,
-                    hasRestrictions: isRestricted
+                    hasRestrictions: restrictionValue
+                        ? ['sim', 'true', '1'].includes(restrictionValue)
+                        : undefined
                 }
             })
 
@@ -217,17 +231,17 @@ export default function AdminPage() {
             const data = await res.json()
 
             if (data.success) {
-                setImportStatus(`Sucesso! Criados: ${data.created}. Erros: ${data.errors.length}`)
+                setImportStatus(`Sucesso! Criados: ${data.created}. Atualizados: ${data.updated}. Erros: ${data.errors.length}`)
                 if (data.errors.length > 0) {
-                    setImportStatus(prev => prev + '\nErros:\n' + data.errors.map((e: any) => `${e.cpf}: ${e.error}`).join('\n'))
+                    setImportStatus(prev => prev + '\nErros:\n' + data.errors.map((item: ImportError) => `${item.cpf ?? 'CPF ausente'}: ${item.error}`).join('\n'))
                 }
-                loadVoters()
+                void loadVoters()
             } else {
                 setImportStatus('Erro na importação: ' + data.error)
             }
 
-        } catch (err: any) {
-            setImportStatus('Erro interno: ' + err.message)
+        } catch (error: unknown) {
+            setImportStatus('Erro interno: ' + getErrorMessage(error, 'falha inesperada'))
         } finally {
             setLoading(false)
         }
@@ -236,20 +250,24 @@ export default function AdminPage() {
     const deleteAssembly = async (id: string) => {
         if (!confirm('Deseja excluir esta assembleia e todos os itens?')) return
         try {
-            await fetch(`/api/assembly/${id}`, { method: 'DELETE' })
-            loadAssemblies()
-        } catch (err) {
-            setError('Erro ao excluir assembleia')
+            const res = await fetch(`/api/assembly/${id}`, { method: 'DELETE' })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Erro ao excluir assembleia')
+            void loadAssemblies()
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Erro ao excluir assembleia'))
         }
     }
 
     const deleteVoter = async (id: string) => {
         if (!confirm('Deseja excluir este eleitor?')) return
         try {
-            await fetch(`/api/users/${id}`, { method: 'DELETE' })
-            loadVoters()
-        } catch (err) {
-            setError('Erro ao excluir eleitor')
+            const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Erro ao excluir eleitor')
+            void loadVoters()
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Erro ao excluir eleitor'))
         }
     }
 
@@ -259,6 +277,7 @@ export default function AdminPage() {
             name: voter.name,
             cpf: voter.cpf,
             birthDate: new Date(voter.birthDate).toISOString().split('T')[0],
+            phone: voter.phone ?? '',
             hasRestrictions: voter.hasRestrictions
         })
         setShowEditVoterModal(true)
@@ -282,9 +301,9 @@ export default function AdminPage() {
 
             setShowEditVoterModal(false)
             setEditingVoter(null)
-            loadVoters()
-        } catch (err: any) {
-            setError(err.message)
+            void loadVoters()
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Erro ao editar eleitor'))
         } finally {
             setLoading(false)
         }
@@ -295,6 +314,16 @@ export default function AdminPage() {
         const cleanCpfQuery = query.replace(/\D/g, '')
         return v.name.toLowerCase().includes(query) || v.cpf.includes(query) || (cleanCpfQuery.length > 0 && v.cpf.replace(/\D/g, '').includes(cleanCpfQuery))
     })
+    const voterTotalPages = Math.max(1, Math.ceil(filteredVoters.length / VOTERS_PER_PAGE))
+    const currentVoterPage = Math.min(voterPage, voterTotalPages)
+    const paginatedVoters = filteredVoters.slice(
+        (currentVoterPage - 1) * VOTERS_PER_PAGE,
+        currentVoterPage * VOTERS_PER_PAGE
+    )
+
+    useEffect(() => {
+        if (voterPage > voterTotalPages) setVoterPage(voterTotalPages)
+    }, [voterPage, voterTotalPages])
 
     return (
         <div className="admin-container">
@@ -346,6 +375,7 @@ export default function AdminPage() {
                                 <div className="item-stats">
                                     <span>📅 {new Date(assembly.startTime).toLocaleDateString()}</span>
                                     <span>📋 {assembly._count.items} itens</span>
+                                    <span>👥 {assembly._count.electors} eleitores</span>
                                 </div>
                                 <div className="item-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                     <Link href={`/admin/assemblies/${assembly.id}`} className="btn btn-primary btn-sm">
@@ -390,7 +420,10 @@ export default function AdminPage() {
                                 type="text"
                                 placeholder="Buscar por Nome ou CPF..."
                                 value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
+                                onChange={e => {
+                                    setSearchQuery(e.target.value)
+                                    setVoterPage(1)
+                                }}
                                 style={{
                                     width: '100%', padding: '0.6rem 1rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)'
                                 }}
@@ -405,16 +438,18 @@ export default function AdminPage() {
                                     <th>Nome</th>
                                     <th>CPF</th>
                                     <th>Data Nasc.</th>
+                                    <th>WhatsApp</th>
                                     <th>Tipo</th>
                                     <th>Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredVoters.map(voter => (
+                                {paginatedVoters.map(voter => (
                                     <tr key={voter.id}>
                                         <td>{voter.name}</td>
                                         <td>{voter.cpf}</td>
-                                        <td>{new Date(voter.birthDate).toLocaleDateString('pt-BR')}</td>
+                                        <td>{new Date(voter.birthDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</td>
+                                        <td>{voter.phone || 'Não cadastrado'}</td>
                                         <td>
                                             {voter.hasRestrictions ? (
                                                 <span className="status-badge status-open" style={{ borderColor: '#ef4444', color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)' }}>Diretoria</span>
@@ -441,9 +476,20 @@ export default function AdminPage() {
                                         </td>
                                     </tr>
                                 ))}
+                                {filteredVoters.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="table-empty">Nenhum eleitor encontrado.</td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
+                    <Pagination
+                        currentPage={currentVoterPage}
+                        pageSize={VOTERS_PER_PAGE}
+                        totalItems={filteredVoters.length}
+                        onPageChange={setVoterPage}
+                    />
                 </div>
             )}
 
@@ -563,6 +609,15 @@ export default function AdminPage() {
                                     required
                                 />
                             </div>
+                            <div className="form-group">
+                                <label>WhatsApp com código do país</label>
+                                <input
+                                    type="tel"
+                                    value={newVoter.phone}
+                                    onChange={e => setNewVoter({ ...newVoter, phone: e.target.value })}
+                                    placeholder="+5585999999999"
+                                />
+                            </div>
                             <div className="form-group checkbox-group" style={{ marginTop: '1rem' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                                     <input
@@ -614,6 +669,15 @@ export default function AdminPage() {
                                     required
                                 />
                             </div>
+                            <div className="form-group">
+                                <label>WhatsApp com código do país</label>
+                                <input
+                                    type="tel"
+                                    value={editFormData.phone}
+                                    onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })}
+                                    placeholder="+5585999999999"
+                                />
+                            </div>
                             <div className="form-group checkbox-group" style={{ marginTop: '1rem' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                                     <input
@@ -640,13 +704,14 @@ export default function AdminPage() {
                         <h2>Importar Eleitores</h2>
                         <p className="text-sm text-gray mb-4">
                             Cole os dados no formato CSV (separado por vírgula ou ponto-e-vírgula):<br />
-                            <code>Nome, CPF, Data de Nascimento, Telefone, Membro Diretoria (Sim/Não)</code>
+                            <code>Nome; CPF; Data de Nascimento (DD/MM/AAAA); Telefone; Membro Diretoria (Sim/Não)</code><br />
+                            Eleitores já cadastrados serão atualizados pelo CPF.
                         </p>
 
                         <textarea
                             className="import-area"
                             rows={10}
-                            placeholder={`João Silva, 123.456.789-00, 1990-01-01, 1199999999, Não\nMaria Santos; 222.333.444-55; 1985-05-20; 1188888888; Sim`}
+                            placeholder={`João Silva; 529.982.247-25; 01/01/1990; +5511999999999; Não\nMaria Santos; 111.444.777-35; 20/05/1985; +5511888888888; Sim`}
                             value={importText}
                             onChange={e => setImportText(e.target.value)}
                         />

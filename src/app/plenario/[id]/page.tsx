@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import '../plenario.css'
@@ -24,13 +24,7 @@ export default function AssemblyResultsPage() {
     const [assemblyTitle, setAssemblyTitle] = useState('')
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
-        loadResults()
-        const interval = setInterval(loadResults, 3000) // Fast refresh for realtime feel
-        return () => clearInterval(interval)
-    }, [id])
-
-    const loadResults = async () => {
+    const loadResults = useCallback(async () => {
         try {
             const res = await fetch(`/api/results?assemblyId=${id}`)
             if (res.ok) {
@@ -45,7 +39,13 @@ export default function AssemblyResultsPage() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [id])
+
+    useEffect(() => {
+        void loadResults()
+        const interval = setInterval(loadResults, 3000) // Fast refresh for realtime feel
+        return () => clearInterval(interval)
+    }, [loadResults])
 
     const getPercentage = (count: number, total: number) => {
         if (total === 0) return 0
@@ -58,8 +58,6 @@ export default function AssemblyResultsPage() {
 
         const pApprove = (approve / total) * 100
         const pReject = (reject / total) * 100
-        const pAbstain = (abstain / total) * 100
-
         // Format: conic-gradient(green 0% 30%, red 30% 70%, gray 70% 100%)
         return {
             background: `conic-gradient(

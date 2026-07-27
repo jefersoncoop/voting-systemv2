@@ -10,8 +10,6 @@ export default function PublicQuestionsPage() {
 
     const [assembly, setAssembly] = useState<{ title: string } | null>(null)
     const [formData, setFormData] = useState({
-        cpf: '',
-        name: '',
         municipality: '',
         content: ''
     })
@@ -29,22 +27,9 @@ export default function PublicQuestionsPage() {
         }
     }, [id])
 
-    const formatCPF = (value: string) => {
-        return value
-            .replace(/\D/g, '')
-            .replace(/(\d{3})(\d)/, '$1.$2')
-            .replace(/(\d{3})(\d)/, '$1.$2')
-            .replace(/(\d{3})(\d{1,2})/, '$1-$2')
-            .replace(/(-\d{2})\d+?$/, '$1')
-    }
-
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
-        if (name === 'cpf') {
-            setFormData(prev => ({ ...prev, [name]: formatCPF(value) }))
-        } else {
-            setFormData(prev => ({ ...prev, [name]: value }))
-        }
+        setFormData(prev => ({ ...prev, [name]: value }))
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -63,11 +48,11 @@ export default function PublicQuestionsPage() {
 
             if (res.ok) {
                 setMessage({ type: 'success', text: 'Sua pergunta foi enviada com sucesso! Obrigado pela participação.' })
-                setFormData({ cpf: '', name: '', municipality: '', content: '' })
+                setFormData({ municipality: '', content: '' })
             } else {
                 setMessage({ type: 'error', text: data.error || 'Erro ao enviar pergunta. Tente novamente.' })
             }
-        } catch (err) {
+        } catch {
             setMessage({ type: 'error', text: 'Erro de conexão. Tente novamente.' })
         } finally {
             setLoading(false)
@@ -92,32 +77,6 @@ export default function PublicQuestionsPage() {
                 )}
 
                 <form onSubmit={handleSubmit} className="questions-form">
-                    <div className="form-group">
-                        <label htmlFor="cpf">Seu CPF (Somente números)</label>
-                        <input
-                            type="text"
-                            id="cpf"
-                            name="cpf"
-                            value={formData.cpf}
-                            onChange={handleChange}
-                            placeholder="000.000.000-00"
-                            required
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="name">Seu Nome Completo</label>
-                        <input
-                            type="text"
-                            id="name"
-                            name="name"
-                            value={formData.name}
-                            onChange={handleChange}
-                            placeholder="Digite seu nome completo"
-                            required
-                        />
-                    </div>
-
                     <div className="form-group">
                         <label htmlFor="municipality">Seu Município</label>
                         <input
@@ -150,7 +109,7 @@ export default function PublicQuestionsPage() {
                 </form>
 
                 <footer className="questions-footer">
-                    <p>Este formulário é de uso exclusivo de eleitores cadastrados.</p>
+                    <p>Sua identificação é obtida da sessão autenticada. Não compartilhe seu acesso.</p>
                 </footer>
             </div>
         </div>

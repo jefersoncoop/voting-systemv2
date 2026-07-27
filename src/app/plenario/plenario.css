@@ -134,7 +134,8 @@
     border: 2px solid var(--success);
 }
 
-.status-indicator.closed {
+.status-indicator.closed,
+.status-indicator.archived {
     background: rgba(100, 116, 139, 0.1);
     color: #64748b;
     border: 2px solid #94a3b8;

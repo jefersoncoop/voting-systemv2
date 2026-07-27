@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { decrypt } from '@/lib/auth'
+import { getAuthContext } from '@/lib/session'
+import { recordAuditEvent } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-        const payload = await decrypt(session)
-        if (!payload || !payload.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        if (!auth.user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
         let settings = await prisma.systemSettings.findUnique({
             where: { id: 'global' }
@@ -29,11 +28,9 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-        const payload = await decrypt(session)
-        if (!payload || !payload.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        if (!auth.user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
         const body = await request.json()
         const { require2FA } = body
@@ -46,6 +43,11 @@ export async function PATCH(request: NextRequest) {
             where: { id: 'global' },
             create: { id: 'global', require2FA },
             update: { require2FA }
+        })
+
+        await recordAuditEvent({
+            type: 'SETTINGS_UPDATED', request, actorUserId: auth.user.id,
+            targetId: 'global', metadata: { require2FA }
         })
 
         return NextResponse.json({ settings })

@@ -1,104 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { decrypt } from '@/lib/auth'
+import { getAuthContext } from '@/lib/session'
+import { syncAssemblyStatus, validateAssemblyDates } from '@/lib/assembly'
+import { recordAuditEvent } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-        const payload = await decrypt(session)
-        if (!payload) return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 })
-
-        // Garantir que hasRestrictions seja buscado do banco de dados para evitar dados obsoletos na sessão
-        const user = await prisma.user.findUnique({
-            where: { id: payload.userId },
-            select: { hasRestrictions: true }
-        })
-        const hasRestrictions = user?.hasRestrictions || false
-
-        // Allow read access for all authenticated users (voters and admins)
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
         const assembliesData = await prisma.assembly.findMany({
+            where: auth.user.isAdmin ? {} : { electors: { some: { userId: auth.user.id } } },
             orderBy: { createdAt: 'desc' },
-            include: {
-                items: {
-                    select: { id: true }
-                },
-                _count: {
-                    select: { items: true }
-                }
-            }
+            include: { _count: { select: { items: true, electors: true } } }
         })
+        const synchronized = await Promise.all(assembliesData.map(syncAssemblyStatus))
 
-        // Check voting status for each assembly for the current user
-        const assemblies = await Promise.all(assembliesData.map(async (assembly) => {
-            // Contar apenas os itens que o usuário pode votar (considerando restrições)
-            let itemsWhereClause: any = {
-                assemblyId: assembly.id
-            }
-            
-            if (hasRestrictions) {
-                // Usuários com restrições só podem votar em itens onde excludesRestricted = false
-                itemsWhereClause.excludesRestricted = false
-            }
-            
-            const votableItemsCount = await prisma.agendaItem.count({
-                where: itemsWhereClause
-            })
+        const assemblies = await Promise.all(synchronized.map(async assembly => {
+            if (auth.user.isAdmin) return { ...assembly, hasCompletedVoting: false }
+            const itemsWhere: Prisma.AgendaItemWhereInput = { assemblyId: assembly.id }
+            if (auth.user.hasRestrictions) itemsWhere.excludesRestricted = false
 
-            const userVotesCount = await prisma.vote.count({
-                where: {
-                    userId: payload.userId,
-                    agendaItem: {
-                        assemblyId: assembly.id
-                    }
-                }
-            })
-
-            // Comparar com o número de itens que o usuário pode votar, não o total
-            const hasCompletedVoting = votableItemsCount > 0 && userVotesCount === votableItemsCount
+            const [votableItemsCount, userVotesCount] = await Promise.all([
+                prisma.agendaItem.count({ where: itemsWhere }),
+                prisma.vote.count({
+                    where: { userId: auth.user.id, agendaItem: { assemblyId: assembly.id } }
+                })
+            ])
 
             return {
                 ...assembly,
-                items: undefined, // Don't send items list to list page
-                hasCompletedVoting
+                hasCompletedVoting: votableItemsCount > 0 && userVotesCount === votableItemsCount
             }
         }))
 
         return NextResponse.json({ assemblies })
     } catch (error) {
+        console.error('Erro ao listar assembleias:', error)
         return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
     }
 }
 
 export async function POST(request: NextRequest) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-        const payload = await decrypt(session)
-        if (!payload || !payload.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        if (!auth.user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
         const body = await request.json()
-        const { title, description, startTime, endTime } = body
-
-        if (!title || !startTime || !endTime) {
-            return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
+        const title = typeof body.title === 'string' ? body.title.trim() : ''
+        const description = typeof body.description === 'string' ? body.description.trim() : null
+        const startTime = new Date(body.startTime)
+        const endTime = new Date(body.endTime)
+        if (!title || !validateAssemblyDates(startTime, endTime)) {
+            return NextResponse.json({ error: 'Título ou período da assembleia inválido' }, { status: 400 })
         }
 
         const assembly = await prisma.assembly.create({
-            data: {
-                title,
-                description,
-                startTime: new Date(startTime),
-                endTime: new Date(endTime),
-                status: 'PENDING'
-            }
+            data: { title, description, startTime, endTime, status: 'SCHEDULED' }
         })
-
-        return NextResponse.json({ assembly })
+        await recordAuditEvent({
+            type: 'ASSEMBLY_CREATED', request, actorUserId: auth.user.id,
+            assemblyId: assembly.id, targetId: assembly.id
+        })
+        return NextResponse.json({ assembly }, { status: 201 })
     } catch (error) {
+        console.error('Erro ao criar assembleia:', error)
         return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
     }
 }

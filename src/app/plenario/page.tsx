@@ -10,6 +10,7 @@ interface Assembly {
     description: string | null
     status: string
     startTime: string
+    showLiveResults: boolean
 }
 
 export default function PlenarioListPage() {
@@ -23,8 +24,10 @@ export default function PlenarioListPage() {
                 const res = await fetch('/api/assembly')
                 if (res.ok) {
                     const data = await res.json()
-                    // Show all assemblies that are not pending (so we can see past results too)
-                    setAssemblies(data.assemblies.filter((a: Assembly) => a.status !== 'PENDING'))
+                    setAssemblies(data.assemblies.filter((assembly: Assembly) =>
+                        ['CLOSED', 'ARCHIVED'].includes(assembly.status)
+                        || (assembly.status === 'OPEN' && assembly.showLiveResults)
+                    ))
                 }
             } catch (error) {
                 console.error(error)

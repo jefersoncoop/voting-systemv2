@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import '../sorteio.css'
@@ -24,13 +24,7 @@ export default function AdminRafflePage() {
     const [assemblyTitle, setAssemblyTitle] = useState('')
     const [error, setError] = useState('')
 
-    useEffect(() => {
-        if (id) {
-            loadData()
-        }
-    }, [id])
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             const [vRes, aRes] = await Promise.all([
                 fetch(`/api/admin/raffle/${id}`),
@@ -48,12 +42,16 @@ export default function AdminRafflePage() {
                 const aData = await aRes.json()
                 setAssemblyTitle(aData.assembly.title)
             }
-        } catch (err) {
+        } catch {
             setError('Erro de conexão ao carregar dados.')
         } finally {
             setLoading(false)
         }
-    }
+    }, [id])
+
+    useEffect(() => {
+        if (id) void loadData()
+    }, [id, loadData])
 
     const startRaffle = () => {
         const eligibleVoters = voters.filter(v => !previousWinners.some(pw => pw.id === v.id))
@@ -78,10 +76,10 @@ export default function AdminRafflePage() {
     }
 
     const maskCPF = (cpf: string) => {
-        return `***.${cpf.substring(3, 6)}.$***-**`
+        return `***.${cpf.substring(3, 6)}.***-**`
     }
 
-    if (loading) return <div className="loading">Carregando mídulos de sorteio...</div>
+    if (loading) return <div className="loading">Carregando módulo de sorteio...</div>
 
     return (
         <div className="admin-container">

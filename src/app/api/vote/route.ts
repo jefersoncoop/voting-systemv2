@@ -1,152 +1,129 @@
+import { createHmac, randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { decrypt } from '@/lib/auth'
-import { createHash } from 'crypto'
+import { getAuthSecret } from '@/lib/auth'
+import { getAuthContext, getClientIp } from '@/lib/session'
+import { consumeRateLimit } from '@/lib/rate-limit'
+import { isVotingWindowOpen, syncAssemblyStatus } from '@/lib/assembly'
+
+function generateProtocol() {
+    return randomBytes(8).toString('hex').toUpperCase().match(/.{1,4}/g)?.join('-') ?? randomBytes(8).toString('hex').toUpperCase()
+}
 
 export async function GET(request: NextRequest) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) {
-            return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-        }
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-        const payload = await decrypt(session)
-        if (!payload) {
-            return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 })
+        const itemsWhere: Prisma.AgendaItemWhereInput = {
+            assembly: { status: 'OPEN', electors: { some: { userId: auth.user.id } } }
         }
-
-        // Buscar últimas restrições do usuário do banco
-        const user = await prisma.user.findUnique({
-            where: { id: payload.userId },
-            select: { hasRestrictions: true }
-        })
-        const hasRestrictions = user?.hasRestrictions || false
-
-        // Get only OPEN items, filtering out restricted items if user has restrictions
-        let itemsWhereClause: any = { 
-            assembly: { status: 'OPEN' }
-        }
-
-        if (hasRestrictions) {
-            itemsWhereClause.excludesRestricted = false
-        }
+        if (auth.user.hasRestrictions) itemsWhere.excludesRestricted = false
 
         const items = await prisma.agendaItem.findMany({
-            where: itemsWhereClause,
-            orderBy: { createdAt: 'desc' },
-            include: {
-                votes: {
-                    where: { userId: payload.userId }
-                }
-            }
+            where: itemsWhere,
+            orderBy: [{ assemblyId: 'asc' }, { order: 'asc' }],
+            include: { votes: { where: { userId: auth.user.id }, select: { choice: true } } }
         })
-
-        // Transform to include user's vote status
-        const itemsWithVoteStatus = items.map(item => ({
-            id: item.id,
-            title: item.title,
-            description: item.description,
-            hasVoted: item.votes.length > 0,
-            userVote: item.votes[0]?.choice || null
-        }))
-
-        return NextResponse.json({ items: itemsWithVoteStatus })
+        return NextResponse.json({
+            items: items.map(item => ({
+                id: item.id,
+                title: item.title,
+                description: item.description,
+                hasVoted: item.votes.length > 0,
+                userVote: item.votes[0]?.choice ?? null
+            }))
+        })
     } catch (error) {
-        console.error(error)
+        console.error('Erro ao listar pautas disponíveis:', error)
         return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
     }
 }
 
 export async function POST(request: NextRequest) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) {
-            return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-        }
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-        const payload = await decrypt(session)
-        if (!payload) {
-            return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 })
+        const limit = await consumeRateLimit({ action: 'VOTE_USER', key: auth.user.id, limit: 60, windowMs: 60 * 1000 })
+        if (!limit.allowed) {
+            return NextResponse.json(
+                { error: 'Muitas tentativas de voto. Aguarde um momento.' },
+                { status: 429, headers: { 'Retry-After': limit.retryAfterSeconds.toString() } }
+            )
         }
 
         const body = await request.json()
-        const { agendaItemId, choice, userAgent } = body
-
-        if (!agendaItemId || !choice) {
-            return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
+        const agendaItemId = typeof body.agendaItemId === 'string' ? body.agendaItemId : ''
+        const choice = typeof body.choice === 'string' ? body.choice : ''
+        if (!agendaItemId || !['APPROVE', 'REJECT', 'ABSTAIN'].includes(choice)) {
+            return NextResponse.json({ error: 'Dados de voto inválidos' }, { status: 400 })
         }
 
-        if (!['APPROVE', 'REJECT', 'ABSTAIN'].includes(choice)) {
-            return NextResponse.json({ error: 'Escolha inválida' }, { status: 400 })
-        }
-
-        // Check if agenda item belongs to an OPEN assembly
-        const item = await prisma.agendaItem.findUnique({
-            where: { id: agendaItemId },
-            include: { assembly: true }
+        const item = await prisma.agendaItem.findUnique({ where: { id: agendaItemId }, include: { assembly: true } })
+        if (!item) return NextResponse.json({ error: 'Pauta não encontrada' }, { status: 404 })
+        const membership = await prisma.assemblyElector.findUnique({
+            where: { assemblyId_userId: { assemblyId: item.assemblyId, userId: auth.user.id } },
+            select: { id: true }
         })
-
-        if (!item) {
-            return NextResponse.json({ error: 'Pauta não encontrada' }, { status: 404 })
+        if (!membership) return NextResponse.json({ error: 'Você não é eleitor desta assembleia' }, { status: 403 })
+        const assembly = await syncAssemblyStatus(item.assembly)
+        if (!isVotingWindowOpen(assembly)) {
+            return NextResponse.json({ error: 'A assembleia não está aberta para votação' }, { status: 409 })
+        }
+        if (item.excludesRestricted && auth.user.hasRestrictions) {
+            return NextResponse.json({ error: 'Eleitor impedido de votar nesta pauta' }, { status: 403 })
         }
 
-        if (item.assembly.status !== 'OPEN') {
-            return NextResponse.json({ error: 'A assembleia não está aberta para votação' }, { status: 400 })
-        }
-
-        // Check Restrictions from DB to ensure they are up to date
-        const user = await prisma.user.findUnique({
-            where: { id: payload.userId },
-            select: { hasRestrictions: true }
-        })
-        const hasRestrictions = user?.hasRestrictions || false
-
-        if (item.excludesRestricted && hasRestrictions) {
-            return NextResponse.json({
-                error: 'Usuário com restrição (Diretoria) impedido de votar nesta pauta'
-            }, { status: 403 })
-        }
-
-        // Get client IP for audit
-        const ip = request.headers.get('x-forwarded-for') ||
-            request.headers.get('x-real-ip') ||
-            'unknown'
-
-        // Get User-Agent from body (sent by client) or header as fallback
-        const ua = userAgent || request.headers.get('user-agent') || 'unknown'
-
-        // Generate unique device hash: SHA-256(ip + ua + userId + assemblyId + timestamp)
+        const ip = getClientIp(request)
+        const userAgent = request.headers.get('user-agent') || 'unknown'
+        const deviceHash = createHmac('sha256', getAuthSecret())
+            .update(`${ip}|${userAgent}|${auth.user.id}|${assembly.id}`)
+            .digest('hex')
         const now = new Date()
-        const rawData = `${ip}|${ua}|${payload.userId}|${item.assemblyId}|${now.toISOString()}`
-        const deviceHash = createHash('sha256').update(rawData).digest('hex')
 
-        // Build a human-readable protocol code: first 16 hex chars split in groups of 4
-        const hashShort = deviceHash.substring(0, 16).toUpperCase()
-        const protocol = `${hashShort.substring(0, 4)}-${hashShort.substring(4, 8)}-${hashShort.substring(8, 12)}-${hashShort.substring(12, 16)}`
-
-        // Try to create vote (will fail if already voted due to unique constraint)
-        try {
-            const vote = await prisma.vote.create({
+        const result = await prisma.$transaction(async tx => {
+            const participation = await tx.participation.upsert({
+                where: { userId_assemblyId: { userId: auth.user.id, assemblyId: assembly.id } },
+                create: { userId: auth.user.id, assemblyId: assembly.id, protocol: generateProtocol() },
+                update: {}
+            })
+            const vote = await tx.vote.create({
                 data: {
-                    userId: payload.userId,
+                    userId: auth.user.id,
                     agendaItemId,
                     choice,
                     ipAddress: ip,
                     deviceHash,
-                    protocol,
+                    protocol: participation.protocol,
                     timestamp: now
+                },
+                select: { id: true, timestamp: true }
+            })
+            await tx.auditEvent.create({
+                data: {
+                    type: 'VOTE_RECORDED',
+                    actorUserId: auth.user.id,
+                    assemblyId: assembly.id,
+                    targetId: vote.id,
+                    ipAddress: ip,
+                    metadata: JSON.stringify({ agendaItemId })
                 }
             })
+            return { vote, participation }
+        })
 
-            return NextResponse.json({ vote, deviceHash, protocol })
-        } catch (err: any) {
-            if (err.code === 'P2002') {
-                return NextResponse.json({ error: 'Você já votou nesta pauta' }, { status: 400 })
-            }
-            throw err
+        return NextResponse.json({
+            success: true,
+            protocol: result.participation.protocol,
+            recordedAt: result.vote.timestamp
+        }, { status: 201 })
+    } catch (error: unknown) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            return NextResponse.json({ error: 'Você já votou nesta pauta' }, { status: 409 })
         }
-    } catch (error) {
-        console.error(error)
+        console.error('Erro ao registrar voto:', error)
         return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
     }
 }

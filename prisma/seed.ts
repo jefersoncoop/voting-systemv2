@@ -7,7 +7,14 @@ async function main() {
   console.log('Seeding database...')
 
   // Clean up existing
+  await prisma.auditEvent.deleteMany()
+  await prisma.rateLimitBucket.deleteMany()
+  await prisma.twoFactorChallenge.deleteMany()
+  await prisma.session.deleteMany()
+  await prisma.assemblyElector.deleteMany()
   await prisma.vote.deleteMany()
+  await prisma.participation.deleteMany()
+  await prisma.question.deleteMany()
   await prisma.agendaItem.deleteMany()
   await prisma.assembly.deleteMany()
   await prisma.user.deleteMany()
@@ -81,6 +88,13 @@ async function main() {
     }
   })
   console.log({ assembly })
+
+  await prisma.assemblyElector.createMany({
+    data: [
+      { assemblyId: assembly.id, userId: voter1.id },
+      { assemblyId: assembly.id, userId: voter2.id }
+    ]
+  })
 
   console.log('Seeding finished.')
 }

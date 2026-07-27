@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { decrypt } from '@/lib/auth'
+import { getAuthContext } from '@/lib/session'
 
 function maskCPF(cpf: string) {
     // Keeps middle digits visible or similar standard
@@ -13,11 +13,9 @@ function maskCPF(cpf: string) {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        const session = request.cookies.get('session')?.value
-        if (!session) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-        const payload = await decrypt(session)
-        if (!payload || !payload.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        const auth = await getAuthContext(request)
+        if (!auth) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+        if (!auth.user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
         const { id } = await params
 
@@ -36,14 +34,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         if (!assembly) return NextResponse.json({ error: 'Assembleia não encontrada' }, { status: 404 })
 
-        // Get Unique Voters for this Assembly
-        // Since votes are per item, we need to aggregate unique users who voted in ANY item of this assembly
-        const votes = await prisma.vote.findMany({
-            where: {
-                agendaItem: {
-                    assemblyId: id
-                }
-            },
+        const participations = await prisma.participation.findMany({
+            where: { assemblyId: id },
             include: {
                 user: {
                     select: {
@@ -52,25 +44,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                     }
                 }
             },
-            orderBy: { timestamp: 'asc' }
+            orderBy: { createdAt: 'asc' }
         })
 
-        // Deduplicate voters — keep entry of first vote only
-        const voterMap = new Map<string, { name: string, cpf: string, timestamp: Date, deviceHash: string | null, protocol: string | null }>()
-
-        votes.forEach(vote => {
-            if (!voterMap.has(vote.userId)) {
-                voterMap.set(vote.userId, {
-                    name: vote.user.name,
-                    cpf: maskCPF(vote.user.cpf),
-                    timestamp: vote.timestamp,
-                    deviceHash: vote.deviceHash ?? null,
-                    protocol: vote.protocol ?? null
-                })
-            }
-        })
-
-        const voters = Array.from(voterMap.values())
+        const voters = participations.map(participation => ({
+            name: participation.user.name,
+            cpf: maskCPF(participation.user.cpf),
+            timestamp: participation.createdAt,
+            protocol: participation.protocol
+        }))
 
         // Calculate Summaries per Item
         const itemSummaries = assembly.items.map(item => {
@@ -87,6 +69,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
         })
 
+        const eligibleElectors = await prisma.assemblyElector.count({ where: { assemblyId: id } })
+
         return NextResponse.json({
             assembly: {
                 title: assembly.title,
@@ -94,6 +78,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 status: assembly.status
             },
             voters,
+            eligibleElectors,
             itemSummaries
         })
 

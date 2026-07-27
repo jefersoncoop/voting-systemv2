@@ -8,67 +8,76 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  cpf       String   @unique
-  birthDate DateTime
-  name      String
-  isAdmin   Boolean  @default(false)
-  phone     String?
-  hasRestrictions Boolean @default(false) // Members impeded from voting on specific items (e.g. Directors)
-  createdAt DateTime @default(now())
-  
-  votes     Vote[]
+  id              String   @id @default(uuid())
+  cpf             String   @unique
+  birthDate       DateTime
+  name            String
+  isAdmin         Boolean  @default(false)
+  phone           String?
+  hasRestrictions Boolean  @default(false) // Members impeded from voting on specific items (e.g. Directors)
+  createdAt       DateTime @default(now())
+
+  votes               Vote[]
+  sessions            Session[]
+  twoFactorChallenges TwoFactorChallenge[]
+  participations      Participation[]
+  assemblyMemberships AssemblyElector[]
 }
 
 model Assembly {
-  id          String   @id @default(uuid())
-  title       String   // Ex: "AGO 2026", "Assembleia Extraordinária 2026"
-  description String?
-  startTime   DateTime
-  endTime     DateTime
-  status      String   @default("PENDING") // PENDING, OPEN, CLOSED
-  createdAt   DateTime @default(now())
-  
-  items       AgendaItem[]
-  questions   Question[]
+  id              String   @id @default(uuid())
+  title           String // Ex: "AGO 2026", "Assembleia Extraordinária 2026"
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  status          String   @default("SCHEDULED") // DRAFT, SCHEDULED, OPEN, CLOSED, ARCHIVED
+  showLiveResults Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items          AgendaItem[]
+  questions      Question[]
+  participations Participation[]
+  electors       AssemblyElector[]
 }
 
 model AgendaItem {
-  id          String   @id @default(uuid())
-  title       String   // Ex: "Aprovação do Orçamento", "Eleição da Diretoria"
-  description String?
-  order       Int      @default(0) // Ordem de apresentação
+  id                 String  @id @default(uuid())
+  title              String // Ex: "Aprovação do Orçamento", "Eleição da Diretoria"
+  description        String?
+  order              Int     @default(0) // Ordem de apresentação
   excludesRestricted Boolean @default(false) // If true, users with hasRestrictions cannot vote
-  
-  assemblyId  String
-  assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
-  
-  votes       Vote[]
-  createdAt   DateTime @default(now())
+
+  assemblyId String
+  assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+
+  votes     Vote[]
+  createdAt DateTime @default(now())
 }
 
 model Vote {
-  id            String   @id @default(uuid())
-  choice        String   // APPROVE, REJECT, ABSTAIN
-  timestamp     DateTime @default(now())
-  ipAddress     String?  // Audit purpose
-  deviceHash    String?  // SHA-256 hash derived from IP + User-Agent + userId + assemblyId + timestamp
-  protocol      String?  // Unique protocol code shown to the voter
-  
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  
-  agendaItemId  String
-  agendaItem    AgendaItem @relation(fields: [agendaItemId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  choice     String // APPROVE, REJECT, ABSTAIN
+  timestamp  DateTime @default(now())
+  ipAddress  String? // Audit purpose
+  deviceHash String? // SHA-256 hash derived from IP + User-Agent + userId + assemblyId + timestamp
+  protocol   String? // Unique protocol code shown to the voter
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  agendaItemId String
+  agendaItem   AgendaItem @relation(fields: [agendaItemId], references: [id], onDelete: Restrict)
 
   // Constraint ensures one vote per user per agenda item
   @@unique([userId, agendaItemId])
+  @@index([agendaItemId])
 }
 
 model SystemSettings {
-  id          String   @id @default("global")
-  require2FA  Boolean  @default(true)
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default("global")
+  require2FA Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
 }
 
 model Question {
@@ -80,4 +89,85 @@ model Question {
   assemblyId        String
   assembly          Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   createdAt         DateTime @default(now())
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model TwoFactorChallenge {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model Participation {
+  id         String   @id @default(uuid())
+  protocol   String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assemblyId String
+  assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Restrict)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, assemblyId])
+  @@index([assemblyId])
+}
+
+model AssemblyElector {
+  id         String   @id @default(uuid())
+  assemblyId String
+  assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([assemblyId, userId])
+  @@index([userId, assemblyId])
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+  type        String
+  actorUserId String?
+  assemblyId  String?
+  targetId    String?
+  metadata    String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([assemblyId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model RateLimitBucket {
+  id              String    @id @default(uuid())
+  action          String
+  keyHash         String
+  count           Int       @default(0)
+  windowStartedAt DateTime
+  blockedUntil    DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([action, keyHash])
+  @@index([blockedUntil])
 }

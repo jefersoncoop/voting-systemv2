@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import '../../admin.css'
 
@@ -16,20 +16,13 @@ interface Question {
 
 export default function AdminQuestionsPage() {
     const params = useParams()
-    const router = useRouter()
     const id = params?.id as string
 
     const [questions, setQuestions] = useState<Question[]>([])
     const [loading, setLoading] = useState(true)
     const [assemblyTitle, setAssemblyTitle] = useState('')
 
-    useEffect(() => {
-        if (id) {
-            loadData()
-        }
-    }, [id])
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             const [qRes, aRes] = await Promise.all([
                 fetch(`/api/admin/questions/${id}`),
@@ -49,7 +42,11 @@ export default function AdminQuestionsPage() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [id])
+
+    useEffect(() => {
+        if (id) void loadData()
+    }, [id, loadData])
 
     if (loading) return <div className="loading">Carregando perguntas...</div>
 
