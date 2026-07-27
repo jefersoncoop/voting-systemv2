@@ -62,6 +62,7 @@ export default function AssemblyDetailsPage() {
     })
     const [savingElector, setSavingElector] = useState(false)
     const [selectedElectorIds, setSelectedElectorIds] = useState<string[]>([])
+    const [assignedElectorSearch, setAssignedElectorSearch] = useState('')
     const [electorSearch, setElectorSearch] = useState('')
     const [electorPage, setElectorPage] = useState(1)
     const [availableElectorPage, setAvailableElectorPage] = useState(1)
@@ -291,9 +292,17 @@ export default function AssemblyDetailsPage() {
     const filteredAvailableUsers = availableUsers.filter(user =>
         !normalizedSearch || user.name.toLowerCase().includes(normalizedSearch) || user.cpf.includes(normalizedSearch.replace(/\D/g, ''))
     )
-    const electorTotalPages = Math.max(1, Math.ceil(electors.length / ELECTORS_PER_PAGE))
+    const normalizedAssignedSearch = assignedElectorSearch.trim().toLowerCase()
+    const assignedSearchDigits = normalizedAssignedSearch.replace(/\D/g, '')
+    const filteredElectors = electors.filter(elector =>
+        !normalizedAssignedSearch
+        || elector.name.toLowerCase().includes(normalizedAssignedSearch)
+        || elector.cpf.replace(/\D/g, '').includes(assignedSearchDigits)
+        || Boolean(assignedSearchDigits && elector.phone?.replace(/\D/g, '').includes(assignedSearchDigits))
+    )
+    const electorTotalPages = Math.max(1, Math.ceil(filteredElectors.length / ELECTORS_PER_PAGE))
     const currentElectorPage = Math.min(electorPage, electorTotalPages)
-    const paginatedElectors = electors.slice(
+    const paginatedElectors = filteredElectors.slice(
         (currentElectorPage - 1) * ELECTORS_PER_PAGE,
         currentElectorPage * ELECTORS_PER_PAGE
     )
@@ -385,32 +394,95 @@ export default function AssemblyDetailsPage() {
                     )}
                 </div>
 
-                <div className="items-list">
-                    {electors.length === 0 ? (
-                        <p className="empty-text">Nenhum eleitor habilitado para esta assembleia.</p>
-                    ) : paginatedElectors.map(elector => (
-                        <div key={elector.id} className="agenda-item-row">
-                            <div className="item-info">
-                                <div>
-                                    <h3>{elector.name}</h3>
-                                    <p>{elector.cpf}{elector.phone ? ` · ${elector.phone}` : ''}</p>
-                                </div>
-                            </div>
-                            <div className="item-actions">
-                                {electorsEditable && (
-                                    <button className="btn-icon" title="Editar eleitor" onClick={() => openElectorEdit(elector)}>✏️</button>
-                                )}
-                                {electorsRemovable && (
-                                    <button className="btn-icon danger" title="Remover eleitor" onClick={() => removeElector(elector.id)}>🗑️</button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                <div className="elector-list-toolbar">
+                    <div className="form-group elector-list-search">
+                        <label htmlFor="assigned-elector-search">Buscar eleitor</label>
+                        <input
+                            id="assigned-elector-search"
+                            type="search"
+                            value={assignedElectorSearch}
+                            onChange={event => {
+                                setAssignedElectorSearch(event.target.value)
+                                setElectorPage(1)
+                            }}
+                            placeholder="Buscar por nome, CPF ou WhatsApp"
+                        />
+                    </div>
+                    {assignedElectorSearch && (
+                        <span className="elector-search-result">
+                            {filteredElectors.length} resultado(s)
+                        </span>
+                    )}
                 </div>
+
+                {electors.length === 0 ? (
+                    <p className="empty-text">Nenhum eleitor habilitado para esta assembleia.</p>
+                ) : (
+                    <div className="table-responsive">
+                        <table className="data-table elector-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>CPF</th>
+                                    <th>WhatsApp</th>
+                                    <th>Perfil</th>
+                                    {electorsRemovable && <th>Ações</th>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {paginatedElectors.map(elector => (
+                                    <tr key={elector.id}>
+                                        <td>
+                                            <div className="elector-name-cell">
+                                                <strong>{elector.name}</strong>
+                                                {electorsEditable && (
+                                                    <button
+                                                        className="btn-icon elector-edit-button"
+                                                        title="Editar eleitor"
+                                                        aria-label={`Editar ${elector.name}`}
+                                                        onClick={() => openElectorEdit(elector)}
+                                                    >
+                                                        ✏️
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="elector-nowrap">{elector.cpf}</td>
+                                        <td className="elector-nowrap">{elector.phone || 'Não cadastrado'}</td>
+                                        <td>
+                                            <span className={`elector-profile ${elector.hasRestrictions ? 'restricted' : ''}`}>
+                                                {elector.hasRestrictions ? 'Diretoria' : 'Membro'}
+                                            </span>
+                                        </td>
+                                        {electorsRemovable && (
+                                            <td>
+                                                <button
+                                                    className="btn-icon danger"
+                                                    title="Remover eleitor"
+                                                    aria-label={`Remover ${elector.name}`}
+                                                    onClick={() => removeElector(elector.id)}
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                                {filteredElectors.length === 0 && (
+                                    <tr>
+                                        <td colSpan={electorsRemovable ? 5 : 4} className="table-empty">
+                                            Nenhum eleitor encontrado para essa busca.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
                 <Pagination
                     currentPage={currentElectorPage}
                     pageSize={ELECTORS_PER_PAGE}
-                    totalItems={electors.length}
+                    totalItems={filteredElectors.length}
                     onPageChange={setElectorPage}
                 />
             </div>
