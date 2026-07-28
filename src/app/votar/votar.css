@@ -247,6 +247,20 @@
     background: var(--primary-hover);
 }
 
+.question-link {
+    display: block;
+    margin-top: 1rem;
+    color: var(--primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+}
+
+.question-link:hover {
+    text-decoration: underline;
+}
+
 /* Voting Session Page (Specific) */
 .sticky {
     position: sticky;
@@ -438,6 +452,24 @@
     background: var(--primary-hover);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.completion-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.question-link-button {
+    margin-top: 0;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-lg);
+}
+
+.question-link-button:hover {
+    background: var(--surface-hover);
+    text-decoration: none;
 }
 
 @keyframes fadeIn {

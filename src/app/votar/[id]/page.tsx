@@ -182,9 +182,14 @@ export default function VotingSessionPage() {
                         </div>
                     </div>
 
-                    <button className="finish-btn" onClick={handleFinish}>
-                        Concluir e Sair
-                    </button>
+                    <div className="completion-actions">
+                        <Link href={`/perguntas/${assembly.id}`} className="question-link question-link-button">
+                            Tem dúvidas? Enviar pergunta
+                        </Link>
+                        <button className="finish-btn" onClick={handleFinish}>
+                            Concluir e Sair
+                        </button>
+                    </div>
                 </div>
             </div>
         )
