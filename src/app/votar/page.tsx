@@ -210,7 +210,7 @@ export default function VotarPage() {
                                                 Aguarde o Início 🔒
                                             </button>
                                             <Link href={`/perguntas/${assembly.id}`} className="question-link" style={{ display: 'block', textAlign: 'center', marginTop: '1rem', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: '600' }}>
-                                                ¿ Tem dúvidas? Enviar Pergunta
+                                                Tem dúvidas? Enviar pergunta
                                             </Link>
                                         </div>
                                     ) : (
@@ -223,7 +223,7 @@ export default function VotarPage() {
                                                 Iniciar Votação ➜
                                             </Link>
                                             <Link href={`/perguntas/${assembly.id}`} className="question-link" style={{ display: 'block', textAlign: 'center', marginTop: '1rem', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: '600' }}>
-                                                ¿ Tem dúvidas? Enviar Pergunta
+                                                Tem dúvidas? Enviar pergunta
                                             </Link>
                                         </>
                                     )}
