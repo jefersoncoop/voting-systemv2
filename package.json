@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run build",
     "test:security": "node scripts/security-smoke.mjs",
+    "create-admin": "node --import tsx scripts/create-admin.ts",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

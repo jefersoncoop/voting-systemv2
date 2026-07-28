@@ -19,7 +19,7 @@ Na página administrativa da assembleia, o botão **Adicionar em lote** permite 
 
 ## Pré-requisitos
 
-- Node.js 20 ou superior
+- Node.js 20.9 ou superior
 - npm
 
 ## Configuração local
@@ -80,8 +80,18 @@ O caminho SQLite é resolvido a partir de `prisma/schema.prisma`; portanto, `fil
 | `npm run build` | Gera a compilação de produção. |
 | `npm run check` | Executa lint, tipos e build em sequência. |
 | `npm run test:security` | Executa o smoke test de segurança contra um servidor local na porta configurada. |
+| `npm run create-admin` | Cria o administrador inicial sem carregar dados de demonstração. |
 | `npm run seed` | Recria os dados de demonstração no banco configurado. |
 | `npm start` | Inicia uma compilação de produção existente. |
+
+## Deploy em VPS
+
+O projeto inclui um instalador para Ubuntu 24.04 que configura Node.js, Nginx,
+systemd, HTTPS, backups e uma base de produção vazia. Consulte o
+[guia completo de deploy](./DEPLOY.md).
+
+O instalador baixa o código do GitHub e executa somente as migrações. O banco
+local e os dados de demonstração não são enviados à VPS.
 
 ## Estrutura principal
 
@@ -110,7 +120,9 @@ npx prisma validate
 npx prisma migrate status
 ```
 
-O SQLite é utilizado apenas para desenvolvimento e demonstração. A migração para PostgreSQL é recomendada antes do uso em produção.
+O instalador de VPS mantém um SQLite separado e protegido para a primeira versão
+de produção. A migração para PostgreSQL é recomendada para maior concorrência,
+alta disponibilidade ou crescimento do volume de votos.
 
 ### Teste de segurança
 
@@ -123,7 +135,8 @@ O smoke test espera um banco isolado carregado pelo seed e um servidor local em 
 - Envio por WhatsApp via Twilio em produção; em desenvolvimento, o código é exibido apenas no servidor e na tela local.
 - Rate limiting persistente para login, votos e perguntas.
 - Protocolo único por participação em cada assembleia.
-- Eleitorado independente por assembleia, com bloqueio de alterações após a abertura.
+- Eleitorado independente por assembleia, com inclusão e correção permitidas
+  durante a abertura e trilha de auditoria.
 - Bloqueio de exclusão de usuários, pautas e assembleias que possuam histórico de votação.
 - Resultados parciais ocultos, salvo liberação explícita do administrador.
 - Registro de eventos administrativos e de votação em trilha de auditoria.
