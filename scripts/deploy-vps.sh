@@ -66,6 +66,15 @@ prompt_configuration() {
 install_system_dependencies() {
     log "Instalando dependências do sistema"
     export DEBIAN_FRONTEND=noninteractive
+
+    local nodesource_keyring="/usr/share/keyrings/nodesource.gpg"
+    local nodesource_list="/etc/apt/sources.list.d/nodesource.list"
+    local nodesource_sources="/etc/apt/sources.list.d/nodesource.sources"
+
+    # Remove somente a configuração gerenciada por este instalador. Isso também
+    # recupera uma execução interrompida por um keyring ilegível ou inválido.
+    rm -f "$nodesource_list" "$nodesource_sources"
+
     apt-get update
     apt-get install -y ca-certificates curl git gnupg nginx openssl sqlite3 snapd ufw
 
@@ -77,17 +86,56 @@ install_system_dependencies() {
         installed_version="${installed_version#v}"
         IFS=. read -r installed_major installed_minor _ <<< "$installed_version"
     fi
+
     if (( installed_major < 20 || (installed_major == 20 && installed_minor < 9) )); then
-        log "Instalando Node.js ${NODE_MAJOR}.x"
-        local key_tmp
-        key_tmp="$(mktemp)"
-        curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$key_tmp"
-        gpg --batch --yes --dearmor -o /usr/share/keyrings/nodesource.gpg "$key_tmp"
-        rm -f "$key_tmp"
-        printf 'deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_%s.x nodistro main\n' "$NODE_MAJOR" \
-            > /etc/apt/sources.list.d/nodesource.list
-        apt-get update
-        apt-get install -y nodejs
+        local distro_candidate
+        local distro_version
+        local distro_major=0
+        distro_candidate="$(apt-cache policy nodejs | awk '/Candidate:/ { print $2; exit }')"
+        distro_version="${distro_candidate#*:}"
+        if [[ "$distro_version" =~ ^([0-9]+)\. ]]; then
+            distro_major="${BASH_REMATCH[1]}"
+        fi
+
+        if (( distro_major >= 20 )); then
+            log "Instalando Node.js pelo repositório oficial do Ubuntu"
+            apt-get install -y nodejs npm
+        else
+            log "Instalando Node.js ${NODE_MAJOR}.x pelo NodeSource"
+            local key_tmp
+            key_tmp="$(mktemp)"
+            curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$key_tmp"
+            gpg --batch --yes --dearmor -o "$nodesource_keyring" "$key_tmp"
+            rm -f "$key_tmp"
+
+            # O APT valida a assinatura como o usuário `_apt`, portanto o
+            # keyring e a definição do repositório precisam ser públicos.
+            chmod 0644 "$nodesource_keyring"
+
+            local expected_fingerprint="6F71F525282841EEDAF851B42F59B5F99B1BE0B4"
+            local key_fingerprints
+            key_fingerprints="$(gpg --batch --show-keys --with-colons "$nodesource_keyring" \
+                | awk -F: '$1 == "fpr" { print $10 }')"
+            [[ "$key_fingerprints" == *"$expected_fingerprint"* ]] || \
+                die "A chave baixada do NodeSource não possui a impressão digital esperada"
+
+            local architecture
+            architecture="$(dpkg --print-architecture)"
+            [[ "$architecture" == "amd64" || "$architecture" == "arm64" ]] || \
+                die "Arquitetura sem suporte pelo NodeSource: $architecture"
+
+            cat > "$nodesource_sources" <<EOF
+Types: deb
+URIs: https://deb.nodesource.com/node_${NODE_MAJOR}.x
+Suites: nodistro
+Components: main
+Architectures: $architecture
+Signed-By: $nodesource_keyring
+EOF
+            chmod 0644 "$nodesource_sources"
+            apt-get update
+            apt-get install -y nodejs
+        fi
     fi
 
     local node_version

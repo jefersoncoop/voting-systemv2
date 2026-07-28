@@ -1,13 +1,13 @@
 # Deploy em VPS
 
 Este procedimento instala a aplicação diretamente do repositório
-`jefersoncoop/voting-systemv2` em uma VPS Ubuntu 24.04. O instalador cria um
+`jefersoncoop/voting-systemv2` em uma VPS Ubuntu 24.04 ou mais recente. O instalador cria um
 banco SQLite de produção vazio; ele não copia `prisma/dev.db`, `.env` nem
 qualquer dado da máquina de desenvolvimento.
 
 ## Antes de começar
 
-- Crie uma VPS Ubuntu 24.04 com pelo menos 2 GB de memória.
+- Crie uma VPS Ubuntu 24.04 ou mais recente com pelo menos 2 GB de memória.
 - Aponte um registro DNS `A` do domínio para o IP público da VPS.
 - Confirme que consegue entrar por SSH e que as portas 80 e 443 estão liberadas
   no firewall do provedor.
@@ -92,6 +92,12 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+Se uma versão antiga do instalador tiver parado com `NO_PUBKEY
+2F59B5F99B1BE0B4`, baixe o script atualizado e execute-o novamente. Ele remove
+a entrada incompleta, prefere o Node.js fornecido pelo próprio Ubuntu quando a
+versão for compatível e recria corretamente o keyring quando precisar usar o
+NodeSource.
+
 Para editar as integrações:
 
 ```bash
@@ -162,4 +168,3 @@ imediatamente após iniciar o serviço.
 | `ENABLE_HTTPS` | `true` | Define se o Certbot será executado. |
 | `CONFIGURE_UFW` | `false` | Autoriza o script a configurar o UFW. |
 | `APP_PORT` | `3000` | Porta local entre Nginx e Next.js. |
-
