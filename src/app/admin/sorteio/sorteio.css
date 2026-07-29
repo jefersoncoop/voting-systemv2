@@ -102,6 +102,7 @@
 }
 
 .winner-content {
+    width: 100%;
     text-align: center;
     animation: scaleUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -125,18 +126,89 @@
 }
 
 .winner-name {
-    font-size: 3rem;
+    font-size: 1.5rem;
     font-weight: 800;
     color: var(--primary);
-    margin-bottom: 0.5rem;
+    margin: 0 0 0.25rem;
 }
 
 .winner-cpf {
-    font-size: 1.25rem;
+    font-size: 1rem;
     color: #64748b;
     font-family: monospace;
     letter-spacing: 0.05em;
-    margin-bottom: 2rem;
+    margin: 0;
+}
+
+.current-winners {
+    display: grid;
+    gap: 0.75rem;
+    width: 100%;
+    max-height: 320px;
+    margin-bottom: 1.5rem;
+    overflow-y: auto;
+}
+
+.current-winner-card {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: white;
+    text-align: left;
+}
+
+.winner-position {
+    display: grid;
+    place-items: center;
+    flex: 0 0 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    font-weight: 800;
+}
+
+.raffle-quantity-control {
+    display: grid;
+    grid-template-columns: 1fr 110px;
+    gap: 0.5rem 1rem;
+    align-items: center;
+    width: 100%;
+    max-width: 400px;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+}
+
+.raffle-quantity-control label {
+    color: var(--foreground);
+    font-weight: 600;
+}
+
+.raffle-quantity-control input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: white;
+    color: var(--foreground);
+    font: inherit;
+    text-align: center;
+}
+
+.raffle-quantity-control input:focus {
+    border-color: var(--primary);
+    outline: 2px solid rgba(99, 102, 241, 0.15);
+}
+
+.raffle-quantity-control span {
+    grid-column: 1 / -1;
+    color: #64748b;
+    font-size: 0.8rem;
 }
 
 .reset-btn {

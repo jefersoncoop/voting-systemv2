@@ -12,6 +12,33 @@ interface Voter {
     cpf: string
 }
 
+function secureRandomIndex(maxExclusive: number) {
+    const range = 0x100000000
+    const limit = Math.floor(range / maxExclusive) * maxExclusive
+    const values = new Uint32Array(1)
+    let value = 0
+
+    do {
+        crypto.getRandomValues(values)
+        value = values[0]
+    } while (value >= limit)
+
+    return value % maxExclusive
+}
+
+function drawVoters(voters: Voter[], quantity: number) {
+    const pool = [...voters]
+
+    for (let index = 0; index < quantity; index++) {
+        const selectedIndex = index + secureRandomIndex(pool.length - index)
+        const current = pool[index]
+        pool[index] = pool[selectedIndex]
+        pool[selectedIndex] = current
+    }
+
+    return pool.slice(0, quantity)
+}
+
 export default function AdminRafflePage() {
     const params = useParams()
     const id = params?.id as string
@@ -19,8 +46,9 @@ export default function AdminRafflePage() {
     const [voters, setVoters] = useState<Voter[]>([])
     const [loading, setLoading] = useState(true)
     const [spinning, setSpinning] = useState(false)
-    const [winner, setWinner] = useState<Voter | null>(null)
+    const [winners, setWinners] = useState<Voter[]>([])
     const [previousWinners, setPreviousWinners] = useState<Voter[]>([])
+    const [winnerQuantity, setWinnerQuantity] = useState(1)
     const [assemblyTitle, setAssemblyTitle] = useState('')
     const [error, setError] = useState('')
 
@@ -53,24 +81,32 @@ export default function AdminRafflePage() {
         if (id) void loadData()
     }, [id, loadData])
 
+    const remainingVoters = voters.filter(v => !previousWinners.some(winner => winner.id === v.id))
+
+    useEffect(() => {
+        setWinnerQuantity(current => Math.min(Math.max(current, 1), Math.max(remainingVoters.length, 1)))
+    }, [remainingVoters.length])
+
     const startRaffle = () => {
-        const eligibleVoters = voters.filter(v => !previousWinners.some(pw => pw.id === v.id))
-        
-        if (eligibleVoters.length === 0) {
+        if (remainingVoters.length === 0) {
             setError('Todos os eleitores aptos já foram sorteados!')
             return
         }
+
+        if (!Number.isInteger(winnerQuantity) || winnerQuantity < 1 || winnerQuantity > remainingVoters.length) {
+            setError(`Informe uma quantidade entre 1 e ${remainingVoters.length}.`)
+            return
+        }
         
-        setWinner(null)
+        setWinners([])
         setSpinning(true)
         setError('')
 
         // Simulation of spinning for 3 seconds
         setTimeout(() => {
-            const randomIndex = Math.floor(Math.random() * eligibleVoters.length)
-            const chosen = eligibleVoters[randomIndex]
-            setWinner(chosen)
-            setPreviousWinners(prev => [chosen, ...prev])
+            const chosen = drawVoters(remainingVoters, winnerQuantity)
+            setWinners(chosen)
+            setPreviousWinners(previous => [...chosen, ...previous])
             setSpinning(false)
         }, 3000)
     }
@@ -104,12 +140,12 @@ export default function AdminRafflePage() {
                     </div>
 
                     <div className="raffle-action-zone">
-                        <div className={`raffle-display ${spinning ? 'spinning' : ''} ${winner ? 'has-winner' : ''}`}>
-                            {!winner && !spinning && (
+                        <div className={`raffle-display ${spinning ? 'spinning' : ''} ${winners.length > 0 ? 'has-winner' : ''}`}>
+                            {winners.length === 0 && !spinning && (
                                 <div className="pre-raffle">
                                     <div className="raffle-icon">🎁</div>
                                     <h3>Pronto para o sorteio?</h3>
-                                    <p>Clique no botão abaixo para escolher um ganhador aleatório.</p>
+                                    <p>Defina a quantidade e sorteie os ganhadores sem repetição.</p>
                                 </div>
                             )}
 
@@ -117,25 +153,50 @@ export default function AdminRafflePage() {
                                 <div className="spinning-content">
                                     <div className="spinner-animation"></div>
                                     <h3>Sorteando...</h3>
-                                    <p>Escolhendo entre {voters.length} eleitores</p>
+                                    <p>Escolhendo {winnerQuantity} de {remainingVoters.length} eleitores</p>
                                 </div>
                             )}
 
-                            {winner && !spinning && (
+                            {winners.length > 0 && !spinning && (
                                 <div className="winner-content">
                                     <div className="confetti-effect"></div>
-                                    <div className="winner-badge">🏆 GANHADOR 🏆</div>
-                                    <h2 className="winner-name">{winner.name}</h2>
-                                    <p className="winner-cpf">CPF: {maskCPF(winner.cpf)}</p>
-                                    <button className="reset-btn" onClick={() => setWinner(null)}>Novo Sorteio</button>
+                                    <div className="winner-badge">
+                                        🏆 {winners.length === 1 ? 'GANHADOR' : `${winners.length} GANHADORES`} 🏆
+                                    </div>
+                                    <div className="current-winners">
+                                        {winners.map((winner, index) => (
+                                            <div key={winner.id} className="current-winner-card">
+                                                <span className="winner-position">{index + 1}º</span>
+                                                <div>
+                                                    <h2 className="winner-name">{winner.name}</h2>
+                                                    <p className="winner-cpf">CPF: {maskCPF(winner.cpf)}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button className="reset-btn" onClick={() => setWinners([])}>Novo Sorteio</button>
                                 </div>
                             )}
+                        </div>
+
+                        <div className="raffle-quantity-control">
+                            <label htmlFor="winner-quantity">Quantidade de sorteados neste sorteio</label>
+                            <input
+                                id="winner-quantity"
+                                type="number"
+                                min={1}
+                                max={Math.max(remainingVoters.length, 1)}
+                                value={winnerQuantity}
+                                onChange={event => setWinnerQuantity(Number(event.target.value))}
+                                disabled={spinning || remainingVoters.length === 0}
+                            />
+                            <span>{remainingVoters.length} eleitor(es) ainda disponível(is)</span>
                         </div>
 
                         <button 
                             className={`raffle-btn ${spinning ? 'disabled' : ''}`}
                             onClick={startRaffle}
-                            disabled={spinning || voters.length === 0 || (voters.length > 0 && voters.length === previousWinners.length)}
+                            disabled={spinning || remainingVoters.length === 0}
                         >
                             {spinning ? 'SORTEANDO...' : 'REALIZAR SORTEIO'}
                         </button>
@@ -157,16 +218,14 @@ export default function AdminRafflePage() {
                         )}
 
                         <div className="eligible-list">
-                            <h3>Lista de Aptos ({voters.length - previousWinners.length})</h3>
+                            <h3>Lista de Aptos ({remainingVoters.length})</h3>
                             <div className="voter-scroll">
-                                {voters
-                                    .filter(v => !previousWinners.some(pw => pw.id === v.id))
-                                    .map(v => (
+                                {remainingVoters.map(v => (
                                         <div key={v.id} className="voter-mini-card">
                                             <span className="voter-name-mini">{v.name}</span>
                                             <span className="voter-cpf-mini">{maskCPF(v.cpf)}</span>
                                         </div>
-                                    ))}
+                                ))}
                             </div>
                         </div>
                     </div>
