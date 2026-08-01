@@ -96,10 +96,25 @@ assert.equal(detail.response.status, 200)
 const agendaItem = detail.data.assembly.items[0]
 assert.ok(agendaItem)
 
+const incompleteVote = await request('/api/vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: voter.cookie },
+    body: JSON.stringify({
+        assemblyId: assembly.id,
+        votes: [{ agendaItemId: agendaItem.id, choice: 'APPROVE' }]
+    })
+})
+assert.equal(incompleteVote.response.status, 400)
+const detailAfterIncompleteVote = await request(`/api/assembly/${assembly.id}`, { headers: { Cookie: voter.cookie } })
+assert.ok(detailAfterIncompleteVote.data.assembly.items.every(item => item.votes.length === 0))
+
 const vote = await request('/api/vote', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: voter.cookie },
-    body: JSON.stringify({ agendaItemId: agendaItem.id, choice: 'APPROVE' })
+    body: JSON.stringify({
+        assemblyId: assembly.id,
+        votes: detail.data.assembly.items.map(item => ({ agendaItemId: item.id, choice: 'APPROVE' }))
+    })
 })
 assert.equal(vote.response.status, 201)
 assert.match(vote.data.protocol, /^[A-F0-9]{4}(-[A-F0-9]{4}){3}$/)
@@ -107,7 +122,10 @@ assert.match(vote.data.protocol, /^[A-F0-9]{4}(-[A-F0-9]{4}){3}$/)
 const duplicateVote = await request('/api/vote', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: voter.cookie },
-    body: JSON.stringify({ agendaItemId: agendaItem.id, choice: 'REJECT' })
+    body: JSON.stringify({
+        assemblyId: assembly.id,
+        votes: detail.data.assembly.items.map(item => ({ agendaItemId: item.id, choice: 'REJECT' }))
+    })
 })
 assert.equal(duplicateVote.response.status, 409)
 

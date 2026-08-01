@@ -107,6 +107,36 @@
     transform: none;
 }
 
+.vote-btn.selected {
+    outline: 3px solid var(--foreground);
+    outline-offset: 3px;
+    transform: translateY(-2px);
+}
+
+.ballot-submit {
+    position: sticky;
+    bottom: 1rem;
+    max-width: 720px;
+    margin: 2rem auto 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+
+.ballot-submit p {
+    margin-bottom: 0.75rem;
+    color: #64748b;
+}
+
+.ballot-submit .finish-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .approve {
     background: #10b981;
     color: white;

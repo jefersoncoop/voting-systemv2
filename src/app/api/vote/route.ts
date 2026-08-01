@@ -55,25 +55,67 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json()
-        const agendaItemId = typeof body.agendaItemId === 'string' ? body.agendaItemId : ''
-        const choice = typeof body.choice === 'string' ? body.choice : ''
-        if (!agendaItemId || !['APPROVE', 'REJECT', 'ABSTAIN'].includes(choice)) {
+        const assemblyId = typeof body.assemblyId === 'string' ? body.assemblyId : ''
+        const submittedVotes: Array<{ agendaItemId: string, choice: string } | null> = Array.isArray(body.votes)
+            ? body.votes.map((vote: unknown) => {
+                if (!vote || typeof vote !== 'object') return null
+                const candidate = vote as { agendaItemId?: unknown, choice?: unknown }
+                if (typeof candidate.agendaItemId !== 'string' || typeof candidate.choice !== 'string') return null
+                return { agendaItemId: candidate.agendaItemId, choice: candidate.choice }
+            })
+            : []
+
+        if (
+            !assemblyId ||
+            submittedVotes.length === 0 ||
+            submittedVotes.some(vote => !vote || !['APPROVE', 'REJECT', 'ABSTAIN'].includes(vote.choice))
+        ) {
             return NextResponse.json({ error: 'Dados de voto inválidos' }, { status: 400 })
         }
 
-        const item = await prisma.agendaItem.findUnique({ where: { id: agendaItemId }, include: { assembly: true } })
-        if (!item) return NextResponse.json({ error: 'Pauta não encontrada' }, { status: 404 })
+        const votes = submittedVotes as { agendaItemId: string, choice: string }[]
+        const submittedItemIds = new Set(votes.map(vote => vote.agendaItemId))
+        if (submittedItemIds.size !== votes.length) {
+            return NextResponse.json({ error: 'A cédula contém pautas duplicadas' }, { status: 400 })
+        }
+
+        const assemblyData = await prisma.assembly.findUnique({
+            where: { id: assemblyId },
+            include: { items: { orderBy: { order: 'asc' } } }
+        })
+        if (!assemblyData) return NextResponse.json({ error: 'Assembleia não encontrada' }, { status: 404 })
+
         const membership = await prisma.assemblyElector.findUnique({
-            where: { assemblyId_userId: { assemblyId: item.assemblyId, userId: auth.user.id } },
+            where: { assemblyId_userId: { assemblyId, userId: auth.user.id } },
             select: { id: true }
         })
         if (!membership) return NextResponse.json({ error: 'Você não é eleitor desta assembleia' }, { status: 403 })
-        const assembly = await syncAssemblyStatus(item.assembly)
+        const assembly = await syncAssemblyStatus(assemblyData)
         if (!isVotingWindowOpen(assembly)) {
             return NextResponse.json({ error: 'A assembleia não está aberta para votação' }, { status: 409 })
         }
-        if (item.excludesRestricted && auth.user.hasRestrictions) {
-            return NextResponse.json({ error: 'Eleitor impedido de votar nesta pauta' }, { status: 403 })
+
+        const availableItems = assembly.items.filter(item => !(item.excludesRestricted && auth.user.hasRestrictions))
+        const availableItemIds = new Set(availableItems.map(item => item.id))
+        const hasExactItemSet = votes.length === availableItems.length
+            && votes.every(vote => availableItemIds.has(vote.agendaItemId))
+        if (!hasExactItemSet) {
+            return NextResponse.json(
+                { error: 'Selecione uma opção para todas as pautas disponíveis antes de confirmar' },
+                { status: 400 }
+            )
+        }
+
+        const existingVotes = await prisma.vote.findMany({
+            where: { userId: auth.user.id, agendaItemId: { in: [...availableItemIds] } },
+            select: { agendaItemId: true, choice: true }
+        })
+        const existingByItem = new Map(existingVotes.map(vote => [vote.agendaItemId, vote.choice]))
+        if (existingVotes.length === availableItems.length) {
+            return NextResponse.json({ error: 'Você já concluiu esta votação' }, { status: 409 })
+        }
+        if (votes.some(vote => existingByItem.has(vote.agendaItemId) && existingByItem.get(vote.agendaItemId) !== vote.choice)) {
+            return NextResponse.json({ error: 'Um voto já registrado não pode ser alterado' }, { status: 409 })
         }
 
         const ip = getClientIp(request)
@@ -89,39 +131,46 @@ export async function POST(request: NextRequest) {
                 create: { userId: auth.user.id, assemblyId: assembly.id, protocol: generateProtocol() },
                 update: {}
             })
-            const vote = await tx.vote.create({
-                data: {
-                    userId: auth.user.id,
-                    agendaItemId,
-                    choice,
-                    ipAddress: ip,
-                    deviceHash,
-                    protocol: participation.protocol,
-                    timestamp: now
-                },
-                select: { id: true, timestamp: true }
-            })
-            await tx.auditEvent.create({
-                data: {
-                    type: 'VOTE_RECORDED',
-                    actorUserId: auth.user.id,
-                    assemblyId: assembly.id,
-                    targetId: vote.id,
-                    ipAddress: ip,
-                    metadata: JSON.stringify({ agendaItemId })
-                }
-            })
-            return { vote, participation }
+            const newVotes = []
+            for (const submittedVote of votes) {
+                if (existingByItem.has(submittedVote.agendaItemId)) continue
+
+                const vote = await tx.vote.create({
+                    data: {
+                        userId: auth.user.id,
+                        agendaItemId: submittedVote.agendaItemId,
+                        choice: submittedVote.choice,
+                        ipAddress: ip,
+                        deviceHash,
+                        protocol: participation.protocol,
+                        timestamp: now
+                    },
+                    select: { id: true, timestamp: true }
+                })
+                await tx.auditEvent.create({
+                    data: {
+                        type: 'VOTE_RECORDED',
+                        actorUserId: auth.user.id,
+                        assemblyId: assembly.id,
+                        targetId: vote.id,
+                        ipAddress: ip,
+                        metadata: JSON.stringify({ agendaItemId: submittedVote.agendaItemId })
+                    }
+                })
+                newVotes.push(vote)
+            }
+            return { newVotes, participation }
         })
 
         return NextResponse.json({
             success: true,
             protocol: result.participation.protocol,
-            recordedAt: result.vote.timestamp
+            recordedAt: result.newVotes[0]?.timestamp ?? now,
+            recordedVotes: result.newVotes.length
         }, { status: 201 })
     } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-            return NextResponse.json({ error: 'Você já votou nesta pauta' }, { status: 409 })
+            return NextResponse.json({ error: 'Esta votação já foi registrada' }, { status: 409 })
         }
         console.error('Erro ao registrar voto:', error)
         return NextResponse.json({ error: 'Erro interno' }, { status: 500 })

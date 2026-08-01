@@ -36,6 +36,7 @@ export default function VotingSessionPage() {
     const [error, setError] = useState('')
     const [showCompletion, setShowCompletion] = useState(false)
     const [protocol, setProtocol] = useState('')
+    const [isSubmitting, setIsSubmitting] = useState(false)
     const [userInfo, setUserInfo] = useState<{ name: string; hasRestrictions: boolean } | null>(null)
 
     const loadUserInfo = useCallback(async () => {
@@ -79,7 +80,7 @@ export default function VotingSessionPage() {
                         choices[item.id] = item.votes[0].choice
                     }
                 })
-                setCurrentVote(choices)
+                setCurrentVote(previous => ({ ...previous, ...choices }))
             }
         } catch {
             setError('Erro ao carregar dados')
@@ -117,7 +118,7 @@ export default function VotingSessionPage() {
         }
     }, [submittedVotes, assembly])
 
-    const handleVote = async (itemId: string, choice: string) => {
+    const handleVote = (itemId: string, choice: string) => {
         // Verificar se o item está bloqueado antes de tentar votar
         const item = assembly?.items.find(i => i.id === itemId)
         if (item?.excludesRestricted && userInfo?.hasRestrictions) {
@@ -125,20 +126,32 @@ export default function VotingSessionPage() {
             return
         }
 
+        setCurrentVote(previous => ({ ...previous, [itemId]: choice }))
+    }
+
+    const handleSubmitVotes = async () => {
+        if (!assembly || !assembly.items.every(item => currentVote[item.id])) {
+            alert('Selecione uma opção para todos os itens antes de confirmar.')
+            return
+        }
+
+        setIsSubmitting(true)
         try {
             const res = await fetch('/api/vote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    agendaItemId: itemId,
-                    choice,
-                    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+                    assemblyId: assembly.id,
+                    votes: assembly.items.map(item => ({
+                        agendaItemId: item.id,
+                        choice: currentVote[item.id]
+                    }))
                 })
             })
 
             if (!res.ok) {
                 const data = await res.json()
-                throw new Error(data.error || 'Erro ao votar')
+                throw new Error(data.error || 'Erro ao registrar votos')
             }
 
             const data = await res.json()
@@ -148,10 +161,12 @@ export default function VotingSessionPage() {
                 setProtocol(data.protocol)
             }
 
-            setSubmittedVotes(prev => [...prev, itemId])
-            setCurrentVote(prev => ({ ...prev, [itemId]: choice }))
+            setSubmittedVotes(assembly.items.map(item => item.id))
+            setShowCompletion(true)
         } catch (error: unknown) {
-            alert(getErrorMessage(error, 'Erro ao registrar voto'))
+            alert(getErrorMessage(error, 'Erro ao registrar votos'))
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -257,19 +272,19 @@ export default function VotingSessionPage() {
                                                 ) : (
                                                     <>
                                                         <button
-                                                            className="vote-btn approve"
+                                                            className={`vote-btn approve ${myChoice === 'APPROVE' ? 'selected' : ''}`}
                                                             onClick={() => handleVote(item.id, 'APPROVE')}
                                                         >
                                                             APROVO
                                                         </button>
                                                         <button
-                                                            className="vote-btn reject"
+                                                            className={`vote-btn reject ${myChoice === 'REJECT' ? 'selected' : ''}`}
                                                             onClick={() => handleVote(item.id, 'REJECT')}
                                                         >
                                                             REPROVO
                                                         </button>
                                                         <button
-                                                            className="vote-btn abstain"
+                                                            className={`vote-btn abstain ${myChoice === 'ABSTAIN' ? 'selected' : ''}`}
                                                             onClick={() => handleVote(item.id, 'ABSTAIN')}
                                                         >
                                                             ABSTENHO
@@ -284,6 +299,21 @@ export default function VotingSessionPage() {
                         })
                     )}
                 </div>
+
+                {assembly.status === 'OPEN' && submittedVotes.length < assembly.items.length && (
+                    <div className="ballot-submit">
+                        <p>
+                            {assembly.items.filter(item => currentVote[item.id]).length} de {assembly.items.length} itens selecionados
+                        </p>
+                        <button
+                            className="finish-btn"
+                            onClick={handleSubmitVotes}
+                            disabled={isSubmitting || !assembly.items.every(item => currentVote[item.id])}
+                        >
+                            {isSubmitting ? 'Registrando votos...' : 'Confirmar todos os votos'}
+                        </button>
+                    </div>
+                )}
             </main>
         </div>
     )
